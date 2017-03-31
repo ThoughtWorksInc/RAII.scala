@@ -241,7 +241,7 @@ final class ResourceTSpec extends FreeSpec with Matchers {
         events += s"close $id"
       }
 
-      def generateData() = Some(math.random())
+      def generateData() = Some(math.random)
 
     }
 
@@ -272,7 +272,7 @@ final class ResourceTSpec extends FreeSpec with Matchers {
         events += s"close $id"
       }
 
-      def generateData() = Some(math.random())
+      def generateData() = Some(math.random)
 
     }
 
@@ -305,7 +305,7 @@ final class ResourceTSpec extends FreeSpec with Matchers {
         events += s"close $id"
       }
 
-      def generateData() = Some(math.random())
+      def generateData() = Some(math.random)
 
     }
 
@@ -408,7 +408,7 @@ final class ResourceTSpec extends FreeSpec with Matchers {
         events += s"close $id"
       }
 
-      def generateData() = Some(math.random())
+      def generateData() = Some(math.random)
 
     }
 
@@ -441,7 +441,7 @@ final class ResourceTSpec extends FreeSpec with Matchers {
         events += s"close $id"
       }
 
-      def generateData() = Some(math.random())
+      def generateData() = Some(math.random)
 
     }
 
