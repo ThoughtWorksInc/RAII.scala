@@ -19,11 +19,13 @@ trait ResourceT[F[_], A] extends Any {
 
 object ResourceT {
 
-  def managed[A <: AutoCloseable](autoCloseable: => A): ResourceT[Id.Id, A] = { () =>
-    val a = autoCloseable
-    new CloseableT[Id.Id, A] {
-      override def value: A = a
-      override def close(): Id.Id[Unit] = a.close()
+  def managed[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): ResourceT[F, A] = { () =>
+    Applicative[F].point {
+      val a = autoCloseable
+      new CloseableT[F, A] {
+        override def value: A = a
+        override def close(): F[Unit] = Applicative[F].point(a.close())
+      }
     }
   }
 
