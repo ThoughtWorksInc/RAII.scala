@@ -41,25 +41,25 @@ object ResourceT {
     override def open(): F[CloseableT[F, A]] = underlying()
   }
 
-  def apply[F[_]: Monad, A](a: => A): ResourceT[F, A] = { () =>
-    Monad[F].point(new CloseableT[F, A] {
+  def apply[F[_]: Applicative, A](a: => A): ResourceT[F, A] = { () =>
+    Applicative[F].point(new CloseableT[F, A] {
       override def value: A = a
 
-      override def close(): F[Unit] = Monad[F].point(())
+      override def close(): F[Unit] = Applicative[F].point(())
     })
   }
 
-  def liftM[F[_]: Monad, A](fa: F[A]): ResourceT[F, A] = { () =>
+  def liftM[F[_]: Applicative, A](fa: F[A]): ResourceT[F, A] = { () =>
     fa.map { a =>
       new CloseableT[F, A] {
         override def value: A = a
 
-        override def close(): F[Unit] = Monad[F].point(())
+        override def close(): F[Unit] = Applicative[F].point(())
       }
     }
   }
 
-  def bind[F[_]: Monad, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = { () =>
+  def bind[F[_]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = { () =>
     for {
       closeableA <- fa.open()
       closeableB <- f(closeableA.value).open()
