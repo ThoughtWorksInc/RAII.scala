@@ -1,7 +1,7 @@
 package com.thoughtworks
 
 import scala.language.higherKinds
-import scalaz._
+import scalaz.{Id, _}
 import scalaz.syntax.all._
 
 trait ResourceT[F[_], A] extends Any {
@@ -11,6 +11,15 @@ trait ResourceT[F[_], A] extends Any {
 
 object ResourceT {
 
+  def managed[A <: AutoCloseable](autoCloseable: => A): ResourceT[Id.Id, A] = { () =>
+    val a = autoCloseable
+    new CloseableT[Id.Id, A] {
+      override val value: A = a
+
+      override def close(): Id.Id[Unit] = value.close()
+    }
+  }
+
   trait CloseableT[F[_], A] {
     def value: A
     def close(): F[Unit]
@@ -18,7 +27,7 @@ object ResourceT {
 
   // For Scala 2.10 and 2.11
   implicit final class FunctionResourceT[F[_], A](val underlying: () => F[CloseableT[F, A]])
-    extends AnyVal
+      extends AnyVal
       with ResourceT[F, A] {
     override def open(): F[CloseableT[F, A]] = underlying()
   }
