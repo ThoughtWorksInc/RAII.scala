@@ -416,7 +416,6 @@ final class ResourceTSpec extends FreeSpec with Matchers {
 
     mr foreach { r =>
       events += "using 0"
-      new FakeResource("whatever")
     }
     events should be(mutable.Buffer("open 0", "using 0", "close 0"))
   }
