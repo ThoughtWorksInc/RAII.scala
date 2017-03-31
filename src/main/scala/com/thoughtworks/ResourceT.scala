@@ -14,9 +14,8 @@ object ResourceT {
   def managed[A <: AutoCloseable](autoCloseable: => A): ResourceT[Id.Id, A] = { () =>
     val a = autoCloseable
     new CloseableT[Id.Id, A] {
-      override val value: A = a
-
-      override def close(): Id.Id[Unit] = value.close()
+      override def value: A = a
+      override def close(): Id.Id[Unit] = a.close()
     }
   }
 
