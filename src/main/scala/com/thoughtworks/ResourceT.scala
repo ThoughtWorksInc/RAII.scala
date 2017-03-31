@@ -17,7 +17,7 @@ trait ResourceT[F[_], A] extends Any {
   }
 }
 
-object ResourceT {
+object ResourceT extends MonadTrans[ResourceT] {
 
   def managed[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): ResourceT[F, A] = { () =>
     Applicative[F].point {
@@ -59,6 +59,16 @@ object ResourceT {
     }
   }
 
+  override def liftM[F[_]: Monad, A](fa: F[A]): ResourceT[F, A] = { () =>
+    fa.map { a =>
+      new CloseableT[F, A] {
+        override def value: A = a
+
+        override def close(): F[Unit] = Applicative[F].point(())
+      }
+    }
+  }
+
   def bind[F[_]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = { () =>
     for {
       closeableA <- fa.open()
@@ -74,17 +84,11 @@ object ResourceT {
     }
   }
 
-  implicit object ResourceTMonadTrans extends MonadTrans[ResourceT] {
-
-    override def liftM[F[_]: Monad, A](fa: F[A]): ResourceT[F, A] = ResourceT.liftM(fa)
-
-    override implicit def apply[F[_]: Monad]: Monad[ResourceT[F, ?]] = new Monad[ResourceT[F, ?]] {
-      override def bind[A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
-        ResourceT.bind(fa)(f)
-      }
-
-      override def point[A](a: => A): ResourceT[F, A] = ResourceT(a)
+  override implicit def apply[F[_]: Monad]: Monad[ResourceT[F, ?]] = new Monad[ResourceT[F, ?]] {
+    override def bind[A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
+      ResourceT.bind(fa)(f)
     }
 
+    override def point[A](a: => A): ResourceT[F, A] = ResourceT(a)
   }
 }
