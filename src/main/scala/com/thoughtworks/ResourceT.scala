@@ -7,6 +7,14 @@ import scalaz.syntax.all._
 trait ResourceT[F[_], A] extends Any {
   import ResourceT._
   def open(): F[CloseableT[F, A]]
+  final def foreach(f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
+    open()
+      .flatMap { fa =>
+        f(fa.value)
+        fa.close()
+      }
+      .sequence_[Id.Id, Unit]
+  }
 }
 
 object ResourceT {
