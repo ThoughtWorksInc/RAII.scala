@@ -134,8 +134,8 @@ object ResourceT extends MonadTrans[ResourceT] {
     def close(): F[Unit]
   }
 
-  // For Scala 2.10 and 2.11
-  implicit final class FunctionResourceT[F[_], A](val underlying: () => F[CloseableT[F, A]])
+  // implicit conversion of SAM type for Scala 2.10 and 2.11
+  implicit final class FunctionResourceT[F[_], +A](val underlying: () => F[CloseableT[F, A]])
       extends AnyVal
       with ResourceT[F, A] {
     override def open(): F[CloseableT[F, A]] = underlying()
