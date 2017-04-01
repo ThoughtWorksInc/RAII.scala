@@ -28,28 +28,6 @@ final class ResourceTSpec extends FreeSpec with Matchers {
 
   import Exceptions._
 
-  class FakeResource(resourceName: String) extends AutoCloseable {
-    val events: mutable.Buffer[String] = mutable.Buffer.empty[String]
-
-    var isOpened: Boolean = false
-
-    events += s"open $resourceName"
-    isOpened = true
-
-    override def close(): Unit = {
-      if (isOpened) isOpened = false
-      else throw CanNotCloseResourceTwice()
-      events += s"close $resourceName"
-    }
-
-    def generateData: Option[Double] =
-      if (isOpened) Some(math.random) else throw CanNotGenerateDataBecauseResourceIsNotOpen()
-  }
-
-  class ThrowExceptionOnCloseFakeResource(resourceName: String) extends FakeResource(resourceName: String) {
-    override def close(): Unit = throw Boom()
-  }
-
   "complicated id" in {
 
     import scalaz.syntax.all._
@@ -121,44 +99,83 @@ final class ResourceTSpec extends FreeSpec with Matchers {
 
   "must open and close" in {
 
-    val r = new FakeResource("r")
-    r.isOpened should be(true)
-    val mr = managed(r)
-    r.isOpened should be(true)
-    for (r <- mr) {
-      r.isOpened should be(true)
-      r.events += "using r"
+    val events = mutable.Buffer.empty[String]
+
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
     }
-    r.isOpened should be(false)
-    r.events should be(mutable.Buffer("open r", "using r", "close r"))
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
+
+      override def close(): Unit = {
+        events += s"close $id"
+      }
+    }
+
+    val mr = managed(new MyResource)
+    for (r <- mr) {
+      events += "using r"
+    }
+    events should be(mutable.Buffer("open 0", "using r", "close 0"))
   }
 
   "must close when error occur" ignore {
 
-    val r = new FakeResource("r")
-    r.isOpened should be(true)
-    val mr = managed(r)
-    r.isOpened should be(true)
+    val events = mutable.Buffer.empty[String]
+
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
+    }
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
+
+      override def close(): Unit = {
+        events += s"close $id"
+      }
+    }
+
+    val mr = managed(new MyResource)
 
     try {
       for (r <- mr) {
-        r.isOpened should be(true)
-        r.events += "error is coming"
+        events += "error is coming"
         throw Boom()
       }
     } catch {
       case _: Boom =>
     }
-
-    r.isOpened should be(false)
-    r.events should be(mutable.Buffer("open r", "error is coming", "close r"))
+    events should be(mutable.Buffer("open 0", "error is coming", "close 0"))
   }
 
-  "must throw IllegalStateException when close throw exception" ignore { //or something else but raw exception
-    val r = new ThrowExceptionOnCloseFakeResource("r")
-    r.isOpened should be(true)
-    val mr = managed(r)
-    r.isOpened should be(true)
+  "must throw IllegalStateException when close throw exception" ignore {
+
+    val events = mutable.Buffer.empty[String]
+
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
+    }
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
+
+      override def close(): Unit = {
+        events += s"close $id"
+        throw Boom()
+      }
+    }
+
+    val mr = managed(new MyResource)
 
     //    recoverToSucceededIf[Boom]{
     //      for ( r <- mr) {
@@ -168,88 +185,137 @@ final class ResourceTSpec extends FreeSpec with Matchers {
 
     intercept[IllegalStateException] {
       for (r <- mr) {
-        r.events += "error is coming"
-        r.isOpened should be(true)
+        events += "error is coming"
       }
     }
 
-    r.isOpened should be(true)
-
-    r.events should be(mutable.Buffer("open r", "error is coming", "close r"))
+    events should be(mutable.Buffer("open r", "error is coming", "close r"))
   }
 
-  "must throw Exception when close throw exception and another error occur" in {
-    val r = new ThrowExceptionOnCloseFakeResource("r")
-    r.isOpened should be(true)
-    val mr = managed(r)
-    r.isOpened should be(true)
+  "must throw Exception when close throw exception and another error occur" ignore {
+    val events = mutable.Buffer.empty[String]
 
-    intercept[Boom] {
-      for (r <- mr) {
-        r.isOpened should be(true)
-        r.events += "error is coming"
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
+    }
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
+
+      override def close(): Unit = {
+        events += s"close $id"
         throw Boom()
       }
     }
 
-    r.isOpened should be(true)
-    r.events should be(mutable.Buffer("open r", "error is coming"))
+    val mr = managed(new MyResource)
+
+    intercept[Boom] {
+      for (r <- mr) {
+        events += "error is coming"
+        throw Boom()
+      }
+    }
+
+    events should be(mutable.Buffer("open 0", "error is coming", "close 0"))
   }
 
   "must extract value" ignore {
-    val r = new FakeResource("r")
-    r.isOpened should be(true)
-    val mr = managed(r)
-    r.isOpened should be(true)
+
+    val events = mutable.Buffer.empty[String]
+
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
+    }
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
+
+      override def close(): Unit = {
+        events += s"close $id"
+      }
+
+      def generateData() = Some(math.random)
+
+    }
+
+    val mr = managed(new MyResource)
+
     for (r <- mr) yield {
-      r.isOpened should be(true)
       val data = r.generateData
       data.isDefined should be(true)
     }
-    r.isOpened should be(false)
-    r.events should be(mutable.Buffer("open r", "close r"))
+    events should be(mutable.Buffer("open 0", "close 0"))
   }
 
   "both of resource must open and close" in {
 
-    val r1 = new FakeResource("r1")
-    val r2 = new FakeResource("r2")
-    r1.isOpened should be(true)
-    r2.isOpened should be(true)
+    val events = mutable.Buffer.empty[String]
 
-    val mr1 = managed(r1)
-    val mr2 = managed(r2)
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
+    }
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
 
-    r1.isOpened should be(true)
-    r2.isOpened should be(true)
+      override def close(): Unit = {
+        events += s"close $id"
+      }
 
-    for (r1 <- mr1; r2 <- mr2) {
-      r1.isOpened should be(true)
-      r1.events += "using r1"
-      r2.isOpened should be(true)
-      r2.events += "using r2"
+      def generateData() = Some(math.random)
+
     }
 
-    r1.isOpened should be(false)
-    r2.isOpened should be(false)
-    r1.events should be(mutable.Buffer("open r1", "using r1", "close r1"))
-    r2.events should be(mutable.Buffer("open r2", "using r2", "close r2"))
+    val mr1 = managed(new MyResource)
+    val mr2 = managed(new MyResource)
+
+    for (r1 <- mr1; r2 <- mr2) {
+      events += "using r1"
+      events += "using r2"
+    }
+
+    events should be(mutable.Buffer("open 0", "open 1", "using r1", "using r2", "close 1", "close 0"))
   }
 
   "must not close twice" ignore {
-    val r = new FakeResource("r")
-    r.isOpened should be(true)
-    val mr = managed(r)
-    r.isOpened should be(true)
+
+    val events = mutable.Buffer.empty[String]
+
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
+    }
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
+
+      override def close(): Unit = {
+        events += s"close $id"
+      }
+
+      def generateData() = Some(math.random)
+
+    }
+
+    val mr = managed(new MyResource)
 
     for (r1 <- mr; r2 <- mr) {
-      r1.isOpened should be(true)
-      r1.events += "using r1"
-      r2.isOpened should be(true)
-      r2.events += "using r2"
+      events += "using r1"
+      events += "using r2"
     }
-    r.isOpened should be(false)
-    r.events should be(mutable.Buffer("open r", "using r1", "using r1", "close r"))
+    events should be(mutable.Buffer("open 0", "using r1", "using r2", "close 0"))
   }
 
 //  "must extract for yield" in {
@@ -325,39 +391,72 @@ final class ResourceTSpec extends FreeSpec with Matchers {
 //  }
 //
   "must close on return" in {
-    val r = new FakeResource("r")
-    r.isOpened should be(true)
-    val mr = managed(r)
-    r.isOpened should be(true)
-    mr foreach { r =>
-      r.isOpened should be(true)
-      r.events += "using r"
-      new FakeResource("whatever")
+
+    val events = mutable.Buffer.empty[String]
+
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
     }
-    r.isOpened should be(false)
-    r.events should be(mutable.Buffer("open r", "using r", "close r"))
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
+
+      override def close(): Unit = {
+        events += s"close $id"
+      }
+
+      def generateData() = Some(math.random)
+
+    }
+
+    val mr = managed(new MyResource)
+
+    mr foreach { r =>
+      events += "using 0"
+    }
+    events should be(mutable.Buffer("open 0", "using 0", "close 0"))
   }
 
   // "mustAcquireAndGet"  "mustReturnFirstExceptionInAcquireAndGet" "mustJoinSequence" mustCreateTraversable mustCreateTraversableForExpression
   // mustCreateTraversableMultiLevelForExpression mustErrorOnTraversal mustAllowApplyUsage
 
   "must could be shared" in {
-    val r1 = new FakeResource("r1")
-    val mr1 = managed(r1)
 
-    val r2 = new FakeResource("r2")
-    val mr2 = managed(r2)
+    val events = mutable.Buffer.empty[String]
+
+    var seed = 0
+    def nextId() = {
+      val result = seed
+      seed += 1
+      result
+    }
+    class MyResource extends AutoCloseable {
+      val id = nextId()
+      events += s"open $id"
+
+      override def close(): Unit = {
+        events += s"close $id"
+      }
+
+      def generateData() = Some(math.random)
+
+    }
+
+    val mr1 = managed(new MyResource)
+    val mr2 = managed(new MyResource)
 
     for (r1 <- mr1) {
       for (r2 <- mr2) {
-        r1.events += "using r1"
-        r2.events += "using r2"
-        val areBothDefined = r1.generateData.isDefined & r2.generateData.isDefined
+        events += "using 0"
+        events += "using 1"
+        val areBothDefined = r1.generateData().isDefined & r2.generateData().isDefined
         areBothDefined should be(true)
       }
     }
-    r1.events should be(mutable.Buffer("open r1", "using r1", "close r1"))
-    r2.events should be(mutable.Buffer("open r2", "using r2", "close r2"))
+    events should be(mutable.Buffer("open 0", "open 1", "using 0", "using 1", "close 1", "close 0"))
   }
 
   //mustBeSuccessFuture mustBeFailedFuture mustBeSuccessTry mustBeFailedTry
