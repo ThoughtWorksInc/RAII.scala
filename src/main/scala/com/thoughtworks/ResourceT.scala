@@ -141,7 +141,7 @@ object ResourceT extends MonadTrans[ResourceT] {
     override def open(): F[CloseableT[F, A]] = underlying()
   }
 
-  def apply[F[_]: Applicative, A](a: => A): ResourceT[F, A] = { () =>
+  def apply[F[_]: Applicative, A](a: A): ResourceT[F, A] = { () =>
     Applicative[F].point(new CloseableT[F, A] {
       override def value: A = a
 
