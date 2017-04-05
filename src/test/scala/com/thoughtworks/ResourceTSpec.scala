@@ -2,19 +2,55 @@ package com.thoughtworks
 
 import java.io.{File, FileInputStream}
 
-import org.scalatest.{AsyncFreeSpec, FreeSpec, Matchers}
+import org.scalatest._
 import com.thoughtworks.ResourceT._
+import com.thoughtworks.ResourceTSpec.FakeResource
 
 import scalaz.syntax.all._
 import scalaz._
 import scala.collection.mutable
-import scala.concurrent.Await
-import scalaz.Id
+import scala.concurrent.{Await, Promise}
+import scalaz.Id.Id
+import scalaz.concurrent.{Future, Task}
+
+object ResourceTSpec {
+
+  def createIdGenerator(): () => String = {
+    var nextId = 0;
+    { () =>
+      val id = nextId
+      nextId += 1
+      id.toString
+    }
+  }
+
+  final class FakeResource(allOpenedResources: mutable.HashMap[String, FakeResource], idGenerator: () => String)
+      extends {
+    val id = idGenerator()
+  } with AutoCloseable {
+
+    def this(allOpenedResources: mutable.HashMap[String, FakeResource], constantId: String) = {
+      this(allOpenedResources, { () =>
+        constantId
+      })
+    }
+
+    assert(!allOpenedResources.contains(id))
+    allOpenedResources(id) = this
+
+    override def close(): Unit = {
+      val removed = allOpenedResources.remove(id)
+      assert(removed.contains(this))
+    }
+  }
+
+}
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-final class ResourceTSpec extends FreeSpec with Matchers {
+final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
+  import ResourceTSpec._
 
   object Exceptions {
     case class Boom() extends RuntimeException
@@ -28,99 +64,111 @@ final class ResourceTSpec extends FreeSpec with Matchers {
 
   import Exceptions._
 
-  "complicated id" in {
-
-    import scalaz.syntax.all._
-    import scalaz._
-    import ResourceT._
-
-    val events = mutable.Buffer.empty[String]
-
-    var seed = 0
-    def nextId() = {
-      val result = seed
-      seed += 1
-      result
-    }
-    class MyResource extends AutoCloseable {
-      val id = nextId()
-      events += s"open $id"
-
-      override def close(): Unit = {
-        events += s"close $id"
-      }
-    }
-
-    val resource = managed(new MyResource)
-
-    for (r1 <- ToFunctorOps[ResourceT[Id.Id, ?], MyResource](resource)(ResourceT.apply[Id.Id]);
-         x = 0;
-         r2 <- resource;
-         y = 1) {
-      events += "using r1 and r2"
-    }
-
-    events should be(mutable.Buffer("open 0", "open 1", "using r1 and r2", "close 1", "close 0"))
-
-  }
-
-  "id" in {
-
-    import scalaz.syntax.all._
-    import scalaz._
-    import ResourceT._
-
-    val events = mutable.Buffer.empty[String]
-
-    var seed = 0
-    def nextId() = {
-      val result = seed
-      seed += 1
-      result
-    }
-    class MyResource extends AutoCloseable {
-      val id = nextId()
-      events += s"open $id"
-
-      override def close(): Unit = {
-        events += s"close $id"
-      }
-    }
-
-    val resource = managed(new MyResource)
-
-    for (r1 <- resource; r2 <- resource) {
-      events += "using r1 and r2"
-    }
-
-    events should be(mutable.Buffer("open 0", "open 1", "using r1 and r2", "close 1", "close 0"))
-
-  }
-
   "must open and close" in {
-
-    val events = mutable.Buffer.empty[String]
-
-    var seed = 0
-    def nextId() = {
-      val result = seed
-      seed += 1
-      result
+    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed(new FakeResource(allOpenedResouces, "r0"))
+    allOpenedResouces.keys shouldNot contain("r0")
+    for (r0 <- mr0) {
+      allOpenedResouces("r0") should be(r0)
     }
-    class MyResource extends AutoCloseable {
-      val id = nextId()
-      events += s"open $id"
+    allOpenedResouces.keys shouldNot contain("r0")
+  }
 
-      override def close(): Unit = {
-        events += s"close $id"
+  "when working with scalaz's Future, it must asynchronously open and close" in {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResouces, "r0"))
+    allOpenedResouces.keys shouldNot contain("r0")
+    val asynchronousResource: Future[Unit] = mr0.using { r0 =>
+      Future.delay {
+        events += "using r0"
+        allOpenedResouces("r0") should be(r0)
       }
     }
 
-    val mr = managed(new MyResource)
-    for (r <- mr) {
-      events += "using r"
+    val p = Promise[Assertion]
+    asynchronousResource.unsafePerformAsync { _ =>
+      p.success {
+        allOpenedResouces.keys shouldNot contain("r0")
+        events should be(Seq("using r0"))
+      }
     }
-    events should be(mutable.Buffer("open 0", "using r", "close 0"))
+    p.future
+  }
+
+  "when working with scalaz's EitherT" - {
+
+    "must asynchronously open and close when an exception occurs" ignore {
+      import scalaz.concurrent.Task._
+      val events = mutable.Buffer.empty[String]
+      val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+      val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResouces, "r0"))
+      allOpenedResouces.keys shouldNot contain("r0")
+      val asynchronousResource: Task[Unit] = new Task(mr0.using { r0 =>
+        Future.delay {
+          events += "using r0"
+          -\/(new Boom: Throwable)
+        }
+      })
+
+      val p = Promise[Assertion]
+      asynchronousResource.unsafePerformAsync { either =>
+        p.success {
+          inside(either) {
+            case -\/(e) =>
+              e should be(a[Boom])
+          }
+          allOpenedResouces.keys shouldNot contain("r0")
+          events should be(Seq("using r0"))
+        }
+      }
+      p.future
+    }
+  }
+  "when working with scalaz's Task" - {
+    "must asynchronously open and close" in {
+      val events = mutable.Buffer.empty[String]
+      val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+      val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResouces, "r0"))
+      allOpenedResouces.keys shouldNot contain("r0")
+      val asynchronousResource: Task[Unit] = mr0.using { r0 =>
+        Task.delay {
+          events += "using r0"
+          allOpenedResouces("r0") should be(r0)
+        }
+      }
+
+      val p = Promise[Assertion]
+      asynchronousResource.unsafePerformAsync { _ =>
+        p.success {
+          allOpenedResouces.keys shouldNot contain("r0")
+          events should be(Seq("using r0"))
+        }
+      }
+      p.future
+    }
+
+    "must asynchronously open and close when an exception occurs" ignore {
+      import scalaz.concurrent.Task._
+      val events = mutable.Buffer.empty[String]
+      val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+      val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResouces, "r0"))
+      allOpenedResouces.keys shouldNot contain("r0")
+      val asynchronousResource: Task[Unit] = mr0.using { r0 =>
+        events += "using r0"
+        (new Boom: Throwable).raiseError
+      }
+
+      val p = Promise[Assertion]
+      asynchronousResource.unsafePerformAsync { _ =>
+        p.success {
+          allOpenedResouces.keys shouldNot contain("r0")
+          events should be(Seq("using r0"))
+        }
+      }
+      p.future
+    }
+
   }
 
   "must close when error occur" ignore {
@@ -254,91 +302,58 @@ final class ResourceTSpec extends FreeSpec with Matchers {
     events should be(mutable.Buffer("open 0", "close 0"))
   }
 
-  "both of resource must open and close" in {
+  "both of resources must open and close" in {
 
-    val events = mutable.Buffer.empty[String]
+    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed(new FakeResource(allOpenedResouces, "mr0"))
+    val mr1 = managed(new FakeResource(allOpenedResouces, "mr1"))
+    allOpenedResouces.keys shouldNot contain("mr0")
+    allOpenedResouces.keys shouldNot contain("mr1")
 
-    var seed = 0
-    def nextId() = {
-      val result = seed
-      seed += 1
-      result
-    }
-    class MyResource extends AutoCloseable {
-      val id = nextId()
-      events += s"open $id"
-
-      override def close(): Unit = {
-        events += s"close $id"
-      }
-
-      def generateData() = Some(math.random)
-
+    for (r0 <- mr0; r1 <- mr1) {
+      allOpenedResouces("mr0") should be(r0)
+      allOpenedResouces("mr1") should be(r1)
     }
 
-    val mr1 = managed(new MyResource)
-    val mr2 = managed(new MyResource)
-
-    for (r1 <- mr1; r2 <- mr2) {
-      events += "using r1"
-      events += "using r2"
-    }
-
-    events should be(mutable.Buffer("open 0", "open 1", "using r1", "using r2", "close 1", "close 0"))
+    allOpenedResouces.keys shouldNot contain("mr0")
+    allOpenedResouces.keys shouldNot contain("mr1")
   }
 
-  "must not close twice" ignore {
+  "both of resources must open and close in complicated usage" in {
 
-    val events = mutable.Buffer.empty[String]
+    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed(new FakeResource(allOpenedResouces, "mr0"))
+    val mr1 = managed(new FakeResource(allOpenedResouces, "mr1"))
+    allOpenedResouces.keys shouldNot contain("mr0")
+    allOpenedResouces.keys shouldNot contain("mr1")
 
-    var seed = 0
-    def nextId() = {
-      val result = seed
-      seed += 1
-      result
-    }
-    class MyResource extends AutoCloseable {
-      val id = nextId()
-      events += s"open $id"
-
-      override def close(): Unit = {
-        events += s"close $id"
-      }
-
-      def generateData() = Some(math.random)
-
+    for (r0 <- mr0; x = 0;
+         r1 <- mr1; y = 1) {
+      allOpenedResouces("mr0") should be(r0)
+      allOpenedResouces("mr1") should be(r1)
     }
 
-    val mr = managed(new MyResource)
+    allOpenedResouces.keys shouldNot contain("mr0")
+    allOpenedResouces.keys shouldNot contain("mr1")
 
-    for (r1 <- mr; r2 <- mr) {
-      events += "using r1"
-      events += "using r2"
-    }
-    events should be(mutable.Buffer("open 0", "using r1", "using r2", "close 0"))
   }
+  "must open and close twice" in {
 
-//  "must extract for yield" in {
-//
-//    val r1 = new FakeResource("r1")
-//    val r2 = new FakeResource("r2")
-//    r1.isOpened should be(true)
-//    r2.isOpened should be(true)
-//
-//    val mr1 = managed(r1)
-//    val mr2 = managed(r2)
-//
-//    r1.isOpened should be(true)
-//    r2.isOpened should be(true)
-//
-//    val areBothDefined: Boolean = for (r1 <- mr1; r2 <- mr2)
-//      yield r1.generateData.isDefined & r2.generateData.isDefined
-//
-//    areBothDefined should be(true)
-//
-//    r1.isOpened should be(false)
-//    r2.isOpened should be(false)
-//  }
+    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+    val idGenerator = ResourceTSpec.createIdGenerator()
+    val mr = managed(new FakeResource(allOpenedResouces, idGenerator))
+    allOpenedResouces.keys shouldNot contain("0")
+    allOpenedResouces.keys shouldNot contain("1")
+
+    for (r0 <- mr; r1 <- mr) {
+      allOpenedResouces("0") should be(r0)
+      allOpenedResouces("1") should be(r1)
+
+    }
+    allOpenedResouces.keys shouldNot contain("0")
+    allOpenedResouces.keys shouldNot contain("1")
+
+  }
 
 //  "must return capture all exceptions" in {
 //    val r = new ThrowExceptionOnCloseFakeResource()
@@ -357,28 +372,28 @@ final class ResourceTSpec extends FreeSpec with Matchers {
 //  }
 
 //  "must support vals in for" in {
+//    val r0 = new FakeResource("r0")
 //    val r1 = new FakeResource("r1")
-//    val r2 = new FakeResource("r2")
+//    r0.isOpened should be(true)
 //    r1.isOpened should be(true)
-//    r2.isOpened should be(true)
 //
+//    val mr0 = managed(r0)
 //    val mr1 = managed(r1)
-//    val mr2 = managed(r2)
 //
+//    r0.isOpened should be(true)
 //    r1.isOpened should be(true)
-//    r2.isOpened should be(true)
 //
 //    val areBothDefined: Boolean = for {
+//      r0 <- mr0
+//      dataOfr0: Option[Double] = r0.generateData
 //      r1 <- mr1
-//      dataOfR1: Option[Double] = r1.generateData
-//      r2 <- mr2
-//      dataOfR2: Option[Double] = r2.generateData
-//    } yield dataOfR1.isDefined & dataOfR2.isDefined
+//      dataOfr1: Option[Double] = r1.generateData
+//    } yield dataOfr0.isDefined & dataOfr1.isDefined
 //
 //    areBothDefined should be(true)
 //
+//    r0.isOpened should be(false)
 //    r1.isOpened should be(false)
-//    r2.isOpened should be(false)
 //  }
 
 //
@@ -390,73 +405,28 @@ final class ResourceTSpec extends FreeSpec with Matchers {
 //    ???
 //  }
 //
-  "must close on return" in {
-
-    val events = mutable.Buffer.empty[String]
-
-    var seed = 0
-    def nextId() = {
-      val result = seed
-      seed += 1
-      result
-    }
-    class MyResource extends AutoCloseable {
-      val id = nextId()
-      events += s"open $id"
-
-      override def close(): Unit = {
-        events += s"close $id"
-      }
-
-      def generateData() = Some(math.random)
-
-    }
-
-    val mr = managed(new MyResource)
-
-    mr foreach { r =>
-      events += "using 0"
-    }
-    events should be(mutable.Buffer("open 0", "using 0", "close 0"))
-  }
 
   // "mustAcquireAndGet"  "mustReturnFirstExceptionInAcquireAndGet" "mustJoinSequence" mustCreateTraversable mustCreateTraversableForExpression
   // mustCreateTraversableMultiLevelForExpression mustErrorOnTraversal mustAllowApplyUsage
 
   "must could be shared" in {
+    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+    val idGenerator = ResourceTSpec.createIdGenerator()
+    val mr = managed(new FakeResource(allOpenedResouces, idGenerator))
+    allOpenedResouces.keys shouldNot contain("0")
+    allOpenedResouces.keys shouldNot contain("1")
 
-    val events = mutable.Buffer.empty[String]
-
-    var seed = 0
-    def nextId() = {
-      val result = seed
-      seed += 1
-      result
-    }
-    class MyResource extends AutoCloseable {
-      val id = nextId()
-      events += s"open $id"
-
-      override def close(): Unit = {
-        events += s"close $id"
+    for (r0 <- mr) {
+      allOpenedResouces("0") should be(r0)
+      allOpenedResouces.keys shouldNot contain("1")
+      for (r1 <- mr) {
+        allOpenedResouces("0") should be(r0)
+        allOpenedResouces("1") should be(r1)
       }
-
-      def generateData() = Some(math.random)
-
+      allOpenedResouces.keys shouldNot contain("1")
     }
-
-    val mr1 = managed(new MyResource)
-    val mr2 = managed(new MyResource)
-
-    for (r1 <- mr1) {
-      for (r2 <- mr2) {
-        events += "using 0"
-        events += "using 1"
-        val areBothDefined = r1.generateData().isDefined & r2.generateData().isDefined
-        areBothDefined should be(true)
-      }
-    }
-    events should be(mutable.Buffer("open 0", "open 1", "using 0", "using 1", "close 1", "close 0"))
+    allOpenedResouces.keys shouldNot contain("0")
+    allOpenedResouces.keys shouldNot contain("1")
   }
 
   //mustBeSuccessFuture mustBeFailedFuture mustBeSuccessTry mustBeFailedTry

@@ -15,20 +15,40 @@ import scalaz.syntax.all._
 trait ResourceT[F[_], A] extends Any {
   import ResourceT._
   def open(): F[CloseableT[F, A]]
+
+  final def using[B](f: A => F[B])(implicit monad: Bind[F]): F[B] = {
+    open().flatMap { fa =>
+      f(fa.value).flatMap { a: B =>
+        fa.close().map { _ =>
+          a
+        }
+      }
+    }
+  }
+
   final def foreach(f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
-    open()
+    this
+      .open()
       .flatMap { fa =>
         f(fa.value)
         fa.close()
       }
       .sequence_[Id.Id, Unit]
   }
+
   final def shared(implicit constraint: ResourceT[F, A] === ResourceT[Future, A]): ResourceT[Future, A] = {
     new SharedResource(constraint(this))
   }
 }
 
 object ResourceT extends MonadTrans[ResourceT] {
+//
+//  type EitherResourceT[F[_], A] = EitherT[ResourceT[F, ?], Throwable, A]
+//
+//  def using[F[_], A](eitherTResouce: EitherResourceT[F, A], f: A => F[Unit]): F[Unit] = {
+//    eitherTResouce.run.open().flatMap { fa =>
+//      }
+//  }
 
   private[ResourceT] object SharedResource {
 
