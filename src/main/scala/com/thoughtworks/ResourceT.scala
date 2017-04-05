@@ -53,7 +53,7 @@ trait ResourceT[F[_], A] extends Any {
 
 trait LowPririoryInstances { this: ResourceT.type =>
 
-  implicit def resourceMonad[F[_]: Monad]: Monad[ResourceT[F, ?]] = new Monad[ResourceT[F, ?]] {
+  implicit def resourceTMonad[F[_]: Monad]: Monad[ResourceT[F, ?]] = new Monad[ResourceT[F, ?]] {
     override def bind[A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
       ResourceT.bind(fa)(f)
     }
@@ -64,6 +64,17 @@ trait LowPririoryInstances { this: ResourceT.type =>
 }
 
 object ResourceT extends LowPririoryInstances {
+
+  implicit def eitherTNondeterminism[F[_], L](implicit F0: Nondeterminism[F]): Nondeterminism[EitherT[F, L, ?]] =
+    new Nondeterminism[EitherT[F, L, ?]] {
+      override def chooseAny[A](
+          head: DisjunctionT[F, L, A],
+          tail: Seq[DisjunctionT[F, L, A]]): DisjunctionT[F, L, (A, Seq[DisjunctionT[F, L, A]])] = ???
+
+      override def bind[A, B](fa: DisjunctionT[F, L, A])(f: (A) => DisjunctionT[F, L, B]): DisjunctionT[F, L, B] = ???
+
+      override def point[A](a: => A): DisjunctionT[F, L, A] = EitherT.eitherTMonad[F, L].point(a)
+    }
 
   private[ResourceT] object SharedResource {
 
@@ -229,7 +240,7 @@ object ResourceT extends LowPririoryInstances {
 
   }
 
-  implicit def resourceApplicative[F[_]: Applicative]: Applicative[ResourceT[F, ?]] =
+  implicit def resourceTApplicative[F[_]: Applicative]: Applicative[ResourceT[F, ?]] =
     new Applicative[ResourceT[F, ?]] {
       override def point[A](a: => A): ResourceT[F, A] = ResourceT(a)
 
@@ -242,6 +253,6 @@ object ResourceT extends LowPririoryInstances {
 
     override def liftM[G[_]: Monad, A](a: G[A]): ResourceT[G, A] = ResourceT.liftM(a)
 
-    override implicit def apply[G[_]: Monad]: Monad[ResourceT[G, ?]] = resourceMonad
+    override implicit def apply[G[_]: Monad]: Monad[ResourceT[G, ?]] = resourceTMonad
   }
 }
