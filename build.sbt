@@ -6,4 +6,4 @@ addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % Test
 
-crossScalaVersions := Seq("2.11.8", "2.12.1")
+crossScalaVersions := Seq("2.11.9", "2.12.1")
