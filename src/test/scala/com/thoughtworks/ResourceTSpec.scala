@@ -12,6 +12,7 @@ import scalaz._
 import scala.collection.mutable
 import scala.concurrent.{Await, Promise}
 import scalaz.Id.Id
+import scalaz.concurrent.Future.ParallelFuture
 import scalaz.concurrent.{Future, Task}
 
 object ResourceTSpec {
@@ -54,6 +55,7 @@ object ResourceTSpec {
 }
 
 object Exceptions {
+
   case class Boom() extends RuntimeException
 
   case class CanNotCloseResourceTwice() extends RuntimeException
@@ -61,12 +63,14 @@ object Exceptions {
   case class CanNotOpenResourceTwice() extends RuntimeException
 
   case class CanNotGenerateDataBecauseResourceIsNotOpen() extends RuntimeException
+
 }
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
 final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
+
   import ResourceTSpec._
 
   import Exceptions._
@@ -183,11 +187,13 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
 
     var seed = 0
+
     def nextId() = {
       val result = seed
       seed += 1
       result
     }
+
     class MyResource extends AutoCloseable {
       val id = nextId()
       events += s"open $id"
@@ -215,11 +221,13 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
 
     var seed = 0
+
     def nextId() = {
       val result = seed
       seed += 1
       result
     }
+
     class MyResource extends AutoCloseable {
       val id = nextId()
       events += s"open $id"
@@ -251,11 +259,13 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
 
     var seed = 0
+
     def nextId() = {
       val result = seed
       seed += 1
       result
     }
+
     class MyResource extends AutoCloseable {
       val id = nextId()
       events += s"open $id"
@@ -283,11 +293,13 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
 
     var seed = 0
+
     def nextId() = {
       val result = seed
       seed += 1
       result
     }
+
     class MyResource extends AutoCloseable {
       val id = nextId()
       events += s"open $id"
@@ -361,60 +373,6 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
     allOpenedResouces.keys shouldNot contain("1")
 
   }
-
-//  "must return capture all exceptions" in {
-//    val r = new ThrowExceptionOnCloseFakeResource()
-//
-//    val m: ResourceT[Id.Id, ThrowExceptionOnCloseFakeResource] = managed(r)
-//
-//    ???
-//  }
-//
-//  "mustNestCaptureAllExceptions" in {
-//    ???
-//  }
-//
-//  "mustNestCaptureAllExceptions_and" in {
-//    ???
-//  }
-
-//  "must support vals in for" in {
-//    val r0 = new FakeResource("r0")
-//    val r1 = new FakeResource("r1")
-//    r0.isOpened should be(true)
-//    r1.isOpened should be(true)
-//
-//    val mr0 = managed(r0)
-//    val mr1 = managed(r1)
-//
-//    r0.isOpened should be(true)
-//    r1.isOpened should be(true)
-//
-//    val areBothDefined: Boolean = for {
-//      r0 <- mr0
-//      dataOfr0: Option[Double] = r0.generateData
-//      r1 <- mr1
-//      dataOfr1: Option[Double] = r1.generateData
-//    } yield dataOfr0.isDefined & dataOfr1.isDefined
-//
-//    areBothDefined should be(true)
-//
-//    r0.isOpened should be(false)
-//    r1.isOpened should be(false)
-//  }
-
-//
-//  "mustAcquireFor" in {
-//    ???
-//  }
-//
-//  "mustCloseOnException" in {
-//    ???
-//  }
-//
-
-  // "mustAcquireAndGet"  "mustReturnFirstExceptionInAcquireAndGet" "mustJoinSequence" mustCreateTraversable mustCreateTraversableForExpression
-  // mustCreateTraversableMultiLevelForExpression mustErrorOnTraversal mustAllowApplyUsage
 
   "must could be shared" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
@@ -510,5 +468,109 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
     }
     p.future
   }
+
+  "reference count test with shared -- async -- eitherT" in {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+
+    val sharedResource: ResourceT[Future, FakeResource] =
+      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+
+    val mappedResource: ResourceT[Future, Throwable \/ FakeResource] = sharedResource.map(\/.right)
+
+    val mr = new EitherT[ResourceT[Future, ?], Throwable, FakeResource](mappedResource)
+
+    val usingResource = mr.map { r1: FakeResource =>
+      events += "using 0"
+      allOpenedResources("0") should be(r1)
+    }
+
+    val future: Future[Throwable \/ Assertion] = usingResource.run.run
+
+    val p = Promise[Assertion]
+
+    future.unsafePerformAsync { _ =>
+      p.success {
+        allOpenedResources.keys shouldNot contain("0")
+        events should be(Seq("using 0"))
+      }
+    }
+    p.future
+  }
+
+  "reference count test with shared -- async -- raise exception" in {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+
+    val sharedResource: ResourceT[Future, FakeResource] =
+      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+
+    val mappedResource: ResourceT[Future, Throwable \/ FakeResource] = sharedResource.map(\/.right)
+
+    val mr = new EitherT[ResourceT[Future, ?], Throwable, FakeResource](mappedResource)
+
+    val usingResource = mr.flatMap { r1: FakeResource =>
+      events += "using 0"
+      allOpenedResources("0") should be(r1)
+
+      EitherT.eitherTMonadError[ResourceT[Future, ?], Throwable].raiseError[Assertion](new Boom)
+    }
+
+    val future: Future[Throwable \/ Assertion] = usingResource.run.run
+
+    val p = Promise[Assertion]
+
+    future.unsafePerformAsync { either =>
+      inside(either) {
+        case -\/(e) =>
+          p.success {
+            e should be(a[Boom])
+            allOpenedResources.keys shouldNot contain("0")
+            events should be(Seq("using 0"))
+          }
+      }
+    }
+    p.future
+  }
+//
+//  "reference count test with shared -- ParallelFuture -- raise exception" in {
+//    val events = mutable.Buffer.empty[String]
+//    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+//
+//    import Future.futureParallelApplicativeInstance
+//    val sharedResource: ResourceT[ParallelFuture, FakeResource] =
+//      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+//        .asInstanceOf[ResourceT[ParallelFuture, FakeResource]]
+//
+//    val mappedResource: ResourceT[ParallelFuture, Throwable \/ FakeResource] = sharedResource.map(\/.right)
+//
+//    val mr = new EitherT[ResourceT[ParallelFuture, ?], Throwable, FakeResource](mappedResource)
+//
+//    val usingResource = mr.flatMap { r1: FakeResource =>
+//      events += "using 0"
+//      allOpenedResources("0") should be(r1)
+//
+//      EitherT
+//        .eitherTMonadError[ResourceT[Future, ?], Throwable]
+//        .raiseError[Assertion](new Boom)
+//        .asInstanceOf[EitherT[ResourceT[ParallelFuture, ?], Throwable, Assertion]]
+//    }
+//
+//    val future: ParallelFuture[Throwable \/ Assertion] = usingResource.run.run
+//
+//    val p = Promise[Assertion]
+//
+//    future.unsafePerformAsync { either =>
+//      inside(either) {
+//        case -\/(e) =>
+//          p.success {
+//            e should be(a[Boom])
+//            allOpenedResources.keys shouldNot contain("0")
+//            events should be(Seq("using 0"))
+//          }
+//      }
+//    }
+//    p.future
+//  }
 
 }

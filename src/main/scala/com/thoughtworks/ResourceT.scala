@@ -8,6 +8,7 @@ import scala.language.higherKinds
 import scalaz.Free.Trampoline
 import scalaz.Leibniz.===
 import scalaz.concurrent.Future
+import scalaz.concurrent.Future.ParallelFuture
 import scalaz.{Id, _}
 import scalaz.std.iterable._
 import scalaz.syntax.all._
@@ -47,9 +48,22 @@ trait ResourceT[F[_], A] extends Any {
   final def shared(implicit constraint: ResourceT[F, A] === ResourceT[Future, A]): ResourceT[Future, A] = {
     new SharedResource(constraint(this))
   }
+
 }
 
-object ResourceT extends MonadTrans[ResourceT] {
+trait LowPririoryInstances { this: ResourceT.type =>
+
+  implicit def resourceMonad[F[_]: Monad]: Monad[ResourceT[F, ?]] = new Monad[ResourceT[F, ?]] {
+    override def bind[A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
+      ResourceT.bind(fa)(f)
+    }
+
+    override def point[A](a: => A): ResourceT[F, A] = ResourceT(a)
+  }
+
+}
+
+object ResourceT extends LowPririoryInstances {
 
   private[ResourceT] object SharedResource {
 
@@ -184,16 +198,6 @@ object ResourceT extends MonadTrans[ResourceT] {
     }
   }
 
-  override def liftM[F[_]: Monad, A](fa: F[A]): ResourceT[F, A] = { () =>
-    fa.map { a =>
-      new CloseableT[F, A] {
-        override def value: A = a
-
-        override def close(): F[Unit] = Applicative[F].point(())
-      }
-    }
-  }
-
   def bind[F[_]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = { () =>
     for {
       closeableA <- fa.open()
@@ -209,11 +213,35 @@ object ResourceT extends MonadTrans[ResourceT] {
     }
   }
 
-  override implicit def apply[F[_]: Monad]: Monad[ResourceT[F, ?]] = new Monad[ResourceT[F, ?]] {
-    override def bind[A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
-      ResourceT.bind(fa)(f)
+  def ap[F[_]: Applicative, A, B](fa: => ResourceT[F, A])(f: => ResourceT[F, (A) => B]): ResourceT[F, B] = { () =>
+    Applicative[F].apply2(fa.open(), f.open()) { (closeableA, closeableF) =>
+      val b = closeableF.value(closeableA.value)
+      new CloseableT[F, B] {
+        override def value: B = b
+
+        override def close(): F[Unit] = {
+          Applicative[F].apply2(closeableA.close(), closeableF.close()) { (_: Unit, _: Unit) =>
+            ()
+          }
+        }
+      }
     }
 
-    override def point[A](a: => A): ResourceT[F, A] = ResourceT(a)
+  }
+
+  implicit def resourceApplicative[F[_]: Applicative]: Applicative[ResourceT[F, ?]] =
+    new Applicative[ResourceT[F, ?]] {
+      override def point[A](a: => A): ResourceT[F, A] = ResourceT(a)
+
+      override def ap[A, B](fa: => ResourceT[F, A])(f: => ResourceT[F, (A) => B]): ResourceT[F, B] = {
+        ResourceT.ap(fa)(f)
+      }
+    }
+
+  implicit val resourceMonadTrans = new MonadTrans[ResourceT] {
+
+    override def liftM[G[_]: Monad, A](a: G[A]): ResourceT[G, A] = ResourceT.liftM(a)
+
+    override implicit def apply[G[_]: Monad]: Monad[ResourceT[G, ?]] = resourceMonad
   }
 }
