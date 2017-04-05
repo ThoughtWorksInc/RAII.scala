@@ -51,19 +51,31 @@ trait ResourceT[F[_], A] extends Any {
 
 }
 
-trait LowPririoryInstances { this: ResourceT.type =>
+private[thoughtworks] trait LowPriorityInstances3 { this: ResourceT.type =>
 
-  implicit def resourceTMonad[F[_]: Monad]: Monad[ResourceT[F, ?]] = new Monad[ResourceT[F, ?]] {
-    override def bind[A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
-      ResourceT.bind(fa)(f)
+  implicit def resourceTNondeterminism[F[_], L](implicit F0: Nondeterminism[F]): Nondeterminism[ResourceT[F, ?]] =
+    new ResourceTNondeterminism[F] {
+      private[thoughtworks] override def typeClass = implicitly
     }
 
-    override def point[A](a: => A): ResourceT[F, A] = ResourceT(a)
+}
+
+private[thoughtworks] trait LowPriorityInstances2 extends LowPriorityInstances3 { this: ResourceT.type =>
+
+  implicit def resourceTMonad[F[_]: Monad]: Monad[ResourceT[F, ?]] = new ResourceTMonad[F] {
+    private[thoughtworks] override def typeClass = implicitly
   }
 
 }
 
-object ResourceT extends LowPririoryInstances {
+private[thoughtworks] trait LowPriorityInstances1 extends LowPriorityInstances2 { this: ResourceT.type =>
+
+  implicit def resourceTApplicative[F[_]: Applicative]: Applicative[ResourceT[F, ?]] = new ResourceTApplicative[F] {
+    override private[thoughtworks] def typeClass = implicitly
+  }
+}
+
+object ResourceT extends LowPriorityInstances1 {
 
   implicit def eitherTNondeterminism[F[_], L](implicit F0: Nondeterminism[F]): Nondeterminism[EitherT[F, L, ?]] =
     new Nondeterminism[EitherT[F, L, ?]] {
@@ -240,14 +252,51 @@ object ResourceT extends LowPririoryInstances {
 
   }
 
-  implicit def resourceTApplicative[F[_]: Applicative]: Applicative[ResourceT[F, ?]] =
-    new Applicative[ResourceT[F, ?]] {
-      override def point[A](a: => A): ResourceT[F, A] = ResourceT(a)
+  private[thoughtworks] trait ResourceTApplicative[F[_]] extends Applicative[ResourceT[F, ?]] {
+    private[thoughtworks] implicit def typeClass: Applicative[F]
 
-      override def ap[A, B](fa: => ResourceT[F, A])(f: => ResourceT[F, (A) => B]): ResourceT[F, B] = {
-        ResourceT.ap(fa)(f)
-      }
+    override def point[A](a: => A): ResourceT[F, A] = {
+      ResourceT[F, A](a)
     }
+
+    override def ap[A, B](fa: => ResourceT[F, A])(f: => ResourceT[F, (A) => B]): ResourceT[F, B] = {
+      ResourceT.ap(fa)(f)
+    }
+  }
+
+  private[thoughtworks] trait ResourceTMonad[F[_]] extends ResourceTApplicative[F] with Monad[ResourceT[F, ?]] {
+    private[thoughtworks] implicit override def typeClass: Monad[F]
+
+    override def bind[A, B](fa: ResourceT[F, A])(f: (A) => ResourceT[F, B]): ResourceT[F, B] = {
+      ResourceT.bind(fa)(f)
+    }
+
+  }
+
+  private[thoughtworks] trait ResourceTNondeterminism[F[_]]
+      extends ResourceTMonad[F]
+      with Nondeterminism[ResourceT[F, ?]] {
+    private[thoughtworks] implicit override def typeClass: Nondeterminism[F]
+
+    override def chooseAny[A](head: ResourceT[F, A],
+                              tail: Seq[ResourceT[F, A]]): ResourceT[F, (A, Seq[ResourceT[F, A]])] = { () =>
+      typeClass.chooseAny(head.open(), tail.map(_.open())).map {
+        case (fa, residuals) =>
+          new CloseableT[F, (A, Seq[ResourceT[F, A]])] {
+            override def value: (A, Seq[ResourceT[F, A]]) =
+              (fa.value, residuals.map { residual: F[CloseableT[F, A]] =>
+                { () =>
+                  residual
+                }: ResourceT[F, A]
+              })
+
+            override def close(): F[Unit] = fa.close()
+          }
+
+      }
+
+    }
+  }
 
   implicit val resourceMonadTrans = new MonadTrans[ResourceT] {
 
@@ -255,4 +304,5 @@ object ResourceT extends LowPririoryInstances {
 
     override implicit def apply[G[_]: Monad]: Monad[ResourceT[G, ?]] = resourceTMonad
   }
+
 }
