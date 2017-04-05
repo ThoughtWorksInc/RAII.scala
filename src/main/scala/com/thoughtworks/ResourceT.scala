@@ -25,6 +25,14 @@ trait ResourceT[F[_], A] extends Any {
       }
     }
   }
+  
+  def run(implicit monad: Bind[F]): F[A] = {
+    open().flatMap { fa =>
+      fa.close().map { _ =>
+        fa.value
+      }
+    }
+  }
 
   final def foreach(f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
     this
