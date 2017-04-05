@@ -40,7 +40,7 @@ object ResourceTSpec {
 
     override def close(): Unit = {
       val removed = allOpenedResources.remove(id)
-      assert(removed.contains(this))
+      assert(removed == Some(this))
     }
   }
 
