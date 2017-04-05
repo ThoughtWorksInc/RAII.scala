@@ -128,8 +128,12 @@ object ResourceT extends MonadTrans[ResourceT] {
           } else {
             open(handler)
           }
-        case _ =>
-        // TODO:
+        case oldState @ Open(data, count) =>
+          if (state.compareAndSet(oldState, oldState.copy(count = count + 1))) {
+            handler(sharedCloseable).run
+          } else {
+            open(handler)
+          }
       }
 
     }

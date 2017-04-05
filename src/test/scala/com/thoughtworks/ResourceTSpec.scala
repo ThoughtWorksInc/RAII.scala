@@ -482,23 +482,26 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
 
   }
 
-  "reference count test" in {
-
-    import scala.concurrent
-
+  "reference count test with shared -- async" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr: ResourceT[Future, FakeResource] =
-      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0"))
+      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
     allOpenedResources.keys shouldNot contain("0")
 
-    val asynchronousResource: Future[Unit] = mr.shared.using { r0 =>
-      Future.delay {
+    val usingResource: ResourceT[Future, mutable.Buffer[String]] = mr.flatMap { r1 =>
+      mr.map { r2 =>
+        allOpenedResources.keys should contain("0")
         events += "using 0"
       }
     }
 
+    val asynchronousResource: Future[Unit] = usingResource.using { _ =>
+      Future.now(())
+    }
+
     val p = Promise[Assertion]
+
     asynchronousResource.unsafePerformAsync { _ =>
       p.success {
         allOpenedResources.keys shouldNot contain("0")
