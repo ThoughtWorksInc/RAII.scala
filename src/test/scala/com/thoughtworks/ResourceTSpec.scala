@@ -2,6 +2,7 @@ package com.thoughtworks
 
 import java.io.{File, FileInputStream}
 
+import com.thoughtworks.Exceptions.{CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import org.scalatest._
 import com.thoughtworks.ResourceT._
 import com.thoughtworks.ResourceTSpec.FakeResource
@@ -35,15 +36,31 @@ object ResourceTSpec {
       })
     }
 
-    assert(!allOpenedResources.contains(id))
+    if (allOpenedResources.contains(id)) {
+      throw CanNotOpenResourceTwice()
+    }
     allOpenedResources(id) = this
 
     override def close(): Unit = {
       val removed = allOpenedResources.remove(id)
-      assert(removed == Some(this))
+
+      //noinspection OptionEqualsSome
+      if (removed != Some(this)) {
+        throw CanNotCloseResourceTwice()
+      }
     }
   }
 
+}
+
+object Exceptions {
+  case class Boom() extends RuntimeException
+
+  case class CanNotCloseResourceTwice() extends RuntimeException
+
+  case class CanNotOpenResourceTwice() extends RuntimeException
+
+  case class CanNotGenerateDataBecauseResourceIsNotOpen() extends RuntimeException
 }
 
 /**
@@ -51,16 +68,6 @@ object ResourceTSpec {
   */
 final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
   import ResourceTSpec._
-
-  object Exceptions {
-    case class Boom() extends RuntimeException
-
-    case class CanNotCloseResourceTwice() extends RuntimeException
-
-    case class CanNotOpenResourceTwice() extends RuntimeException
-
-    case class CanNotGenerateDataBecauseResourceIsNotOpen() extends RuntimeException
-  }
 
   import Exceptions._
 
@@ -410,25 +417,98 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
   // mustCreateTraversableMultiLevelForExpression mustErrorOnTraversal mustAllowApplyUsage
 
   "must could be shared" in {
-    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val idGenerator = ResourceTSpec.createIdGenerator()
-    val mr = managed(new FakeResource(allOpenedResouces, idGenerator))
-    allOpenedResouces.keys shouldNot contain("0")
-    allOpenedResouces.keys shouldNot contain("1")
+    val mr = managed(new FakeResource(allOpenedResources, idGenerator))
+    allOpenedResources.keys shouldNot contain("0")
+    allOpenedResources.keys shouldNot contain("1")
 
     for (r0 <- mr) {
-      allOpenedResouces("0") should be(r0)
-      allOpenedResouces.keys shouldNot contain("1")
+      allOpenedResources("0") should be(r0)
+      allOpenedResources.keys shouldNot contain("1")
       for (r1 <- mr) {
-        allOpenedResouces("0") should be(r0)
-        allOpenedResouces("1") should be(r1)
+        allOpenedResources("0") should be(r0)
+        allOpenedResources("1") should be(r1)
       }
-      allOpenedResouces.keys shouldNot contain("1")
+      allOpenedResources.keys shouldNot contain("1")
     }
-    allOpenedResouces.keys shouldNot contain("0")
-    allOpenedResouces.keys shouldNot contain("1")
+    allOpenedResources.keys shouldNot contain("0")
+    allOpenedResources.keys shouldNot contain("1")
   }
 
   //mustBeSuccessFuture mustBeFailedFuture mustBeSuccessTry mustBeFailedTry
+
+  "reference count test without shared" in {
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed(new FakeResource(allOpenedResources, "r0"))
+    allOpenedResources.keys shouldNot contain("r0")
+    intercept[CanNotOpenResourceTwice] {
+      for (r0 <- mr0; r1 <- mr0) {
+        allOpenedResources("r0") should be(r0)
+      }
+    }
+    allOpenedResources.keys should contain("r0")
+  }
+
+  "reference count test without shared -- async" ignore {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+    val mr: ResourceT[Future, FakeResource] =
+      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0"))
+    allOpenedResources.keys shouldNot contain("0")
+
+    recoverToSucceededIf[CanNotOpenResourceTwice] {
+      val usingResource = mr.flatMap { r1 =>
+        mr.map { r2 =>
+          allOpenedResources.keys should contain("0")
+          events += "using 0"
+        }
+      }
+
+      val asynchronousResource: Future[Unit] = usingResource.using { _ =>
+        Future.now(())
+      }
+
+      val p = Promise[Assertion]
+
+      asynchronousResource.unsafePerformAsync { _ =>
+        p.success {
+          allOpenedResources.keys shouldNot contain("0")
+          events should be(Seq("using 0"))
+        }
+      }
+      p.future
+    }
+
+  }
+
+  "reference count test with shared -- async" in {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+    val mr: ResourceT[Future, FakeResource] =
+      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+    allOpenedResources.keys shouldNot contain("0")
+
+    val usingResource: ResourceT[Future, mutable.Buffer[String]] = mr.flatMap { r1 =>
+      mr.map { r2 =>
+        allOpenedResources.keys should contain("0")
+        events += "using 0"
+      }
+    }
+
+    val asynchronousResource: Future[Unit] = usingResource.using { _ =>
+      Future.now(())
+    }
+
+    val p = Promise[Assertion]
+
+    asynchronousResource.unsafePerformAsync { _ =>
+      p.success {
+        allOpenedResources.keys shouldNot contain("0")
+        events should be(Seq("using 0"))
+      }
+    }
+    p.future
+  }
 
 }
