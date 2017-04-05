@@ -16,7 +16,7 @@ trait ResourceT[F[_], A] extends Any {
   import ResourceT._
   def open(): F[CloseableT[F, A]]
 
-  final def using[B](f: A => F[B])(implicit monad: Bind[F]): F[B] = {
+  private[thoughtworks] final def using[B](f: A => F[B])(implicit monad: Bind[F]): F[B] = {
     open().flatMap { fa =>
       f(fa.value).flatMap { a: B =>
         fa.close().map { _ =>
@@ -25,7 +25,7 @@ trait ResourceT[F[_], A] extends Any {
       }
     }
   }
-  
+
   def run(implicit monad: Bind[F]): F[A] = {
     open().flatMap { fa =>
       fa.close().map { _ =>
@@ -34,7 +34,7 @@ trait ResourceT[F[_], A] extends Any {
     }
   }
 
-  final def foreach(f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
+  private[thoughtworks] final def foreach(f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
     this
       .open()
       .flatMap { fa =>
@@ -50,13 +50,6 @@ trait ResourceT[F[_], A] extends Any {
 }
 
 object ResourceT extends MonadTrans[ResourceT] {
-//
-//  type EitherResourceT[F[_], A] = EitherT[ResourceT[F, ?], Throwable, A]
-//
-//  def using[F[_], A](eitherTResouce: EitherResourceT[F, A], f: A => F[Unit]): F[Unit] = {
-//    eitherTResouce.run.open().flatMap { fa =>
-//      }
-//  }
 
   private[ResourceT] object SharedResource {
 
