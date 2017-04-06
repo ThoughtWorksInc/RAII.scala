@@ -141,12 +141,6 @@ final class RAIISpec extends AsyncFreeSpec with Matchers with Inside {
 
     val mr = managed(new MyResource)
 
-    //    recoverToSucceededIf[Boom]{
-    //      for ( r <- mr) {
-    //        r.isOpened should be(true)
-    //      }
-    //    }
-
     intercept[IllegalStateException] {
       for (r <- mr) {
         events += "error is coming"
@@ -295,8 +289,6 @@ final class RAIISpec extends AsyncFreeSpec with Matchers with Inside {
     allOpenedResources.keys shouldNot contain("1")
   }
 
-  //mustBeSuccessFuture mustBeFailedFuture mustBeSuccessTry mustBeFailedTry
-
   "reference count test without shared" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managed(new FakeResource(allOpenedResources, "r0"))
@@ -308,46 +300,4 @@ final class RAIISpec extends AsyncFreeSpec with Matchers with Inside {
     }
     allOpenedResources.keys should contain("r0")
   }
-
-  //
-  //  "reference count test with shared -- ParallelFuture -- raise exception" in {
-  //    val events = mutable.Buffer.empty[String]
-  //    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-  //
-  //    import Future.futureParallelApplicativeInstance
-  //    val sharedResource: RAII[ParallelFuture, FakeResource] =
-  //      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
-  //        .asInstanceOf[RAII[ParallelFuture, FakeResource]]
-  //
-  //    val mappedResource: RAII[ParallelFuture, Throwable \/ FakeResource] = sharedResource.map(\/.right)
-  //
-  //    val mr = new EitherT[RAII[ParallelFuture, ?], Throwable, FakeResource](mappedResource)
-  //
-  //    val usingResource = mr.flatMap { r1: FakeResource =>
-  //      events += "using 0"
-  //      allOpenedResources("0") should be(r1)
-  //
-  //      EitherT
-  //        .eitherTMonadError[RAII[Future, ?], Throwable]
-  //        .raiseError[Assertion](new Boom)
-  //        .asInstanceOf[EitherT[RAII[ParallelFuture, ?], Throwable, Assertion]]
-  //    }
-  //
-  //    val future: ParallelFuture[Throwable \/ Assertion] = usingResource.run.run
-  //
-  //    val p = Promise[Assertion]
-  //
-  //    future.unsafePerformAsync { either =>
-  //      inside(either) {
-  //        case -\/(e) =>
-  //          p.success {
-  //            e should be(a[Boom])
-  //            allOpenedResources.keys shouldNot contain("0")
-  //            events should be(Seq("using 0"))
-  //          }
-  //      }
-  //    }
-  //    p.future
-  //  }
-
 }
