@@ -2,9 +2,9 @@ package com.thoughtworks.raii
 
 import java.io.{File, FileInputStream}
 
-import com.thoughtworks.raii.RAIISpec.Exceptions.{CanNotCloseRAIIwice, CanNotOpenRAIIwice}
 import org.scalatest._
 import com.thoughtworks.raii.RAII._
+import com.thoughtworks.raii.RAIISpec.Exceptions.{CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.RAIISpec.FakeResource
 
 import scalaz.syntax.all._
@@ -19,9 +19,9 @@ object RAIISpec {
 
     case class Boom() extends RuntimeException
 
-    case class CanNotCloseRAIIwice() extends RuntimeException
+    case class CanNotCloseResourceTwice() extends RuntimeException
 
-    case class CanNotOpenRAIIwice() extends RuntimeException
+    case class CanNotOpenResourceTwice() extends RuntimeException
 
     case class CanNotGenerateDataBecauseResourceIsNotOpen() extends RuntimeException
 
@@ -37,9 +37,9 @@ object RAIISpec {
   }
 
   final class FakeResource(allOpenedResources: mutable.HashMap[String, FakeResource], idGenerator: () => String)
-      extends {
-    val id = idGenerator()
-  } with AutoCloseable {
+    extends {
+      val id = idGenerator()
+    } with AutoCloseable {
 
     def this(allOpenedResources: mutable.HashMap[String, FakeResource], constantId: String) = {
       this(allOpenedResources, { () =>
@@ -48,7 +48,7 @@ object RAIISpec {
     }
 
     if (allOpenedResources.contains(id)) {
-      throw CanNotOpenRAIIwice()
+      throw CanNotOpenResourceTwice()
     }
     allOpenedResources(id) = this
 
@@ -57,7 +57,7 @@ object RAIISpec {
 
       //noinspection OptionEqualsSome
       if (removed != Some(this)) {
-        throw CanNotCloseRAIIwice()
+        throw CanNotCloseResourceTwice()
       }
     }
   }
@@ -301,7 +301,7 @@ final class RAIISpec extends AsyncFreeSpec with Matchers with Inside {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managed(new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
-    intercept[CanNotOpenRAIIwice] {
+    intercept[CanNotOpenResourceTwice] {
       for (r0 <- mr0; r1 <- mr0) {
         allOpenedResources("r0") should be(r0)
       }
