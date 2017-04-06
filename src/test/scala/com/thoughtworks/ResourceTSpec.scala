@@ -76,31 +76,31 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
   import Exceptions._
 
   "must open and close" in {
-    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managed(new FakeResource(allOpenedResouces, "r0"))
-    allOpenedResouces.keys shouldNot contain("r0")
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed(new FakeResource(allOpenedResources, "r0"))
+    allOpenedResources.keys shouldNot contain("r0")
     for (r0 <- mr0) {
-      allOpenedResouces("r0") should be(r0)
+      allOpenedResources("r0") should be(r0)
     }
-    allOpenedResouces.keys shouldNot contain("r0")
+    allOpenedResources.keys shouldNot contain("r0")
   }
 
   "when working with scalaz's Future, it must asynchronously open and close" in {
     val events = mutable.Buffer.empty[String]
-    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResouces, "r0"))
-    allOpenedResouces.keys shouldNot contain("r0")
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
+    allOpenedResources.keys shouldNot contain("r0")
     val asynchronousResource: Future[Unit] = mr0.using { r0 =>
       Future.delay {
         events += "using r0"
-        allOpenedResouces("r0") should be(r0)
+        allOpenedResources("r0") should be(r0)
       }
     }
 
     val p = Promise[Assertion]
     asynchronousResource.unsafePerformAsync { _ =>
       p.success {
-        allOpenedResouces.keys shouldNot contain("r0")
+        allOpenedResources.keys shouldNot contain("r0")
         events should be(Seq("using r0"))
       }
     }
@@ -112,12 +112,13 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
     "must asynchronously open and close when an exception occurs" ignore {
       import scalaz.concurrent.Task._
       val events = mutable.Buffer.empty[String]
-      val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
-      val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResouces, "r0"))
-      allOpenedResouces.keys shouldNot contain("r0")
+      val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+      val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
+      allOpenedResources.keys shouldNot contain("r0")
       val asynchronousResource: Task[Unit] = new Task(mr0.using { r0 =>
         Future.delay {
           events += "using r0"
+          allOpenedResources("r0") should be(r0)
           -\/(new Boom: Throwable)
         }
       })
@@ -129,7 +130,7 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
             case -\/(e) =>
               e should be(a[Boom])
           }
-          allOpenedResouces.keys shouldNot contain("r0")
+          allOpenedResources.keys shouldNot contain("r0")
           events should be(Seq("using r0"))
         }
       }
@@ -139,20 +140,20 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
   "when working with scalaz's Task" - {
     "must asynchronously open and close" in {
       val events = mutable.Buffer.empty[String]
-      val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
-      val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResouces, "r0"))
-      allOpenedResouces.keys shouldNot contain("r0")
+      val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+      val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
+      allOpenedResources.keys shouldNot contain("r0")
       val asynchronousResource: Task[Unit] = mr0.using { r0 =>
         Task.delay {
           events += "using r0"
-          allOpenedResouces("r0") should be(r0)
+          allOpenedResources("r0") should be(r0)
         }
       }
 
       val p = Promise[Assertion]
       asynchronousResource.unsafePerformAsync { _ =>
         p.success {
-          allOpenedResouces.keys shouldNot contain("r0")
+          allOpenedResources.keys shouldNot contain("r0")
           events should be(Seq("using r0"))
         }
       }
@@ -162,18 +163,19 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
     "must asynchronously open and close when an exception occurs" ignore {
       import scalaz.concurrent.Task._
       val events = mutable.Buffer.empty[String]
-      val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
-      val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResouces, "r0"))
-      allOpenedResouces.keys shouldNot contain("r0")
+      val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+      val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
+      allOpenedResources.keys shouldNot contain("r0")
       val asynchronousResource: Task[Unit] = mr0.using { r0 =>
         events += "using r0"
+        allOpenedResources("r0") should be(r0)
         (new Boom: Throwable).raiseError
       }
 
       val p = Promise[Assertion]
       asynchronousResource.unsafePerformAsync { _ =>
         p.success {
-          allOpenedResouces.keys shouldNot contain("r0")
+          allOpenedResources.keys shouldNot contain("r0")
           events should be(Seq("using r0"))
         }
       }
@@ -323,54 +325,54 @@ final class ResourceTSpec extends AsyncFreeSpec with Matchers with Inside {
 
   "both of resources must open and close" in {
 
-    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managed(new FakeResource(allOpenedResouces, "mr0"))
-    val mr1 = managed(new FakeResource(allOpenedResouces, "mr1"))
-    allOpenedResouces.keys shouldNot contain("mr0")
-    allOpenedResouces.keys shouldNot contain("mr1")
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed(new FakeResource(allOpenedResources, "mr0"))
+    val mr1 = managed(new FakeResource(allOpenedResources, "mr1"))
+    allOpenedResources.keys shouldNot contain("mr0")
+    allOpenedResources.keys shouldNot contain("mr1")
 
     for (r0 <- mr0; r1 <- mr1) {
-      allOpenedResouces("mr0") should be(r0)
-      allOpenedResouces("mr1") should be(r1)
+      allOpenedResources("mr0") should be(r0)
+      allOpenedResources("mr1") should be(r1)
     }
 
-    allOpenedResouces.keys shouldNot contain("mr0")
-    allOpenedResouces.keys shouldNot contain("mr1")
+    allOpenedResources.keys shouldNot contain("mr0")
+    allOpenedResources.keys shouldNot contain("mr1")
   }
 
   "both of resources must open and close in complicated usage" in {
 
-    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managed(new FakeResource(allOpenedResouces, "mr0"))
-    val mr1 = managed(new FakeResource(allOpenedResouces, "mr1"))
-    allOpenedResouces.keys shouldNot contain("mr0")
-    allOpenedResouces.keys shouldNot contain("mr1")
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+    val mr0 = managed(new FakeResource(allOpenedResources, "mr0"))
+    val mr1 = managed(new FakeResource(allOpenedResources, "mr1"))
+    allOpenedResources.keys shouldNot contain("mr0")
+    allOpenedResources.keys shouldNot contain("mr1")
 
     for (r0 <- mr0; x = 0;
          r1 <- mr1; y = 1) {
-      allOpenedResouces("mr0") should be(r0)
-      allOpenedResouces("mr1") should be(r1)
+      allOpenedResources("mr0") should be(r0)
+      allOpenedResources("mr1") should be(r1)
     }
 
-    allOpenedResouces.keys shouldNot contain("mr0")
-    allOpenedResouces.keys shouldNot contain("mr1")
+    allOpenedResources.keys shouldNot contain("mr0")
+    allOpenedResources.keys shouldNot contain("mr1")
 
   }
   "must open and close twice" in {
 
-    val allOpenedResouces = mutable.HashMap.empty[String, FakeResource]
+    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val idGenerator = ResourceTSpec.createIdGenerator()
-    val mr = managed(new FakeResource(allOpenedResouces, idGenerator))
-    allOpenedResouces.keys shouldNot contain("0")
-    allOpenedResouces.keys shouldNot contain("1")
+    val mr = managed(new FakeResource(allOpenedResources, idGenerator))
+    allOpenedResources.keys shouldNot contain("0")
+    allOpenedResources.keys shouldNot contain("1")
 
     for (r0 <- mr; r1 <- mr) {
-      allOpenedResouces("0") should be(r0)
-      allOpenedResouces("1") should be(r1)
+      allOpenedResources("0") should be(r0)
+      allOpenedResources("1") should be(r1)
 
     }
-    allOpenedResouces.keys shouldNot contain("0")
-    allOpenedResouces.keys shouldNot contain("1")
+    allOpenedResources.keys shouldNot contain("0")
+    allOpenedResources.keys shouldNot contain("1")
 
   }
 
