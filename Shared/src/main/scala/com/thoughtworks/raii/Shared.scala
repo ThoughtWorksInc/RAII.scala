@@ -2,7 +2,7 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.atomic.AtomicReference
 
-import com.thoughtworks.raii.RAII.CloseableT
+import com.thoughtworks.raii.ResourceFactoryT.CloseableT
 
 import scala.annotation.tailrec
 import scala.collection.immutable.Queue
@@ -22,9 +22,9 @@ object Shared {
       extends State[A]
   private[raii] final case class Open[A](data: CloseableT[Future, A], count: Int) extends State[A]
 
-  implicit final class SharedOps[A](raii: RAII[Future, A]) {
+  implicit final class SharedOps[A](raii: ResourceFactoryT[Future, A]) {
 
-    def shared: RAII[Future, A] = {
+    def shared: ResourceFactoryT[Future, A] = {
       new Shared(raii)
     }
 
@@ -33,9 +33,9 @@ object Shared {
 }
 
 import Shared._
-private[raii] final class Shared[A](underlying: RAII[Future, A])
+private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
     extends AtomicReference[State[A]](Closed())
-    with RAII[Future, A]
+    with ResourceFactoryT[Future, A]
     with CloseableT[Future, A] {
   private def sharedCloseable = this
   override def value: A = state.get().asInstanceOf[Open[A]].data.value

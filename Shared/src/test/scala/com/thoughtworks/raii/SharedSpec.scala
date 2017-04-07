@@ -1,8 +1,8 @@
 package com.thoughtworks.raii
 
-import com.thoughtworks.raii.RAII.managed
-import com.thoughtworks.raii.RAIISpec.Exceptions.{Boom, CanNotOpenResourceTwice}
-import com.thoughtworks.raii.RAIISpec.FakeResource
+import com.thoughtworks.raii.ResourceFactoryT.managed
+import com.thoughtworks.raii.ResourceFactoryTSpec.Exceptions.{Boom, CanNotOpenResourceTwice}
+import com.thoughtworks.raii.ResourceFactoryTSpec.FakeResource
 import com.thoughtworks.raii.Shared.SharedOps
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
 
@@ -118,7 +118,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
   "reference count test without shared -- async" ignore {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr: RAII[Future, FakeResource] =
+    val mr: ResourceFactoryT[Future, FakeResource] =
       managed[Future, FakeResource](new FakeResource(allOpenedResources, "0"))
     allOpenedResources.keys shouldNot contain("0")
 
@@ -150,11 +150,11 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
   "reference count test with shared -- async" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr: RAII[Future, FakeResource] =
+    val mr: ResourceFactoryT[Future, FakeResource] =
       managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
     allOpenedResources.keys shouldNot contain("0")
 
-    val usingResource: RAII[Future, mutable.Buffer[String]] = mr.flatMap { r1 =>
+    val usingResource: ResourceFactoryT[Future, mutable.Buffer[String]] = mr.flatMap { r1 =>
       mr.map { r2 =>
         allOpenedResources.keys should contain("0")
         events += "using 0"
@@ -180,12 +180,12 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
 
-    val sharedResource: RAII[Future, FakeResource] =
+    val sharedResource: ResourceFactoryT[Future, FakeResource] =
       managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
 
-    val mappedResource: RAII[Future, Throwable \/ FakeResource] = sharedResource.map(\/.right)
+    val mappedResource: ResourceFactoryT[Future, Throwable \/ FakeResource] = sharedResource.map(\/.right)
 
-    val mr = new EitherT[RAII[Future, ?], Throwable, FakeResource](mappedResource)
+    val mr = new EitherT[ResourceFactoryT[Future, ?], Throwable, FakeResource](mappedResource)
 
     val usingResource = mr.map { r1: FakeResource =>
       events += "using 0"
@@ -209,18 +209,18 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
 
-    val sharedResource: RAII[Future, FakeResource] =
+    val sharedResource: ResourceFactoryT[Future, FakeResource] =
       managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
 
-    val mappedResource: RAII[Future, Throwable \/ FakeResource] = sharedResource.map(\/.right)
+    val mappedResource: ResourceFactoryT[Future, Throwable \/ FakeResource] = sharedResource.map(\/.right)
 
-    val mr = new EitherT[RAII[Future, ?], Throwable, FakeResource](mappedResource)
+    val mr = new EitherT[ResourceFactoryT[Future, ?], Throwable, FakeResource](mappedResource)
 
     val usingResource = mr.flatMap { r1: FakeResource =>
       events += "using 0"
       allOpenedResources("0") should be(r1)
 
-      EitherT.eitherTMonadError[RAII[Future, ?], Throwable].raiseError[Assertion](new Boom)
+      EitherT.eitherTMonadError[ResourceFactoryT[Future, ?], Throwable].raiseError[Assertion](new Boom)
     }
 
     val future: Future[Throwable \/ Assertion] = usingResource.run.run

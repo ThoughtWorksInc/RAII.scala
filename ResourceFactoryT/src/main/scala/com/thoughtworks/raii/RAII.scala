@@ -11,9 +11,9 @@ import scalaz.{Id, _}
 import scalaz.std.iterable._
 import scalaz.syntax.all._
 
-trait RAII[F[_], A] extends Any {
+trait ResourceFactoryT[F[_], A] extends Any {
 
-  import RAII._
+  import ResourceFactoryT._
 
   def open(): F[CloseableT[F, A]]
 
@@ -47,33 +47,33 @@ trait RAII[F[_], A] extends Any {
 
 }
 
-private[raii] trait LowPriorityRAIIInstances3 { this: RAII.type =>
+private[raii] trait LowPriorityResourceFactoryTInstances3 { this: ResourceFactoryT.type =>
 
-  implicit def raiiNondeterminism[F[_], L](implicit F0: Nondeterminism[F]): Nondeterminism[RAII[F, ?]] =
-    new RAIINondeterminism[F] {
+  implicit def raiiNondeterminism[F[_], L](implicit F0: Nondeterminism[F]): Nondeterminism[ResourceFactoryT[F, ?]] =
+    new ResourceFactoryTNondeterminism[F] {
       private[raii] override def typeClass = implicitly
     }
 
 }
 
-private[raii] trait LowPriorityRAIIInstances2 extends LowPriorityRAIIInstances3 { this: RAII.type =>
+private[raii] trait LowPriorityResourceFactoryTInstances2 extends LowPriorityResourceFactoryTInstances3 { this: ResourceFactoryT.type =>
 
-  implicit def raiiMonad[F[_]: Monad]: Monad[RAII[F, ?]] = new RAIIMonad[F] {
+  implicit def raiiMonad[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = new ResourceFactoryTMonad[F] {
     private[raii] override def typeClass = implicitly
   }
 
 }
 
-private[raii] trait LowPriorityRAIIInstances1 extends LowPriorityRAIIInstances2 { this: RAII.type =>
+private[raii] trait LowPriorityResourceFactoryTInstances1 extends LowPriorityResourceFactoryTInstances2 { this: ResourceFactoryT.type =>
 
-  implicit def raiiApplicative[F[_]: Applicative]: Applicative[RAII[F, ?]] = new RAIIApplicative[F] {
+  implicit def raiiApplicative[F[_]: Applicative]: Applicative[ResourceFactoryT[F, ?]] = new ResourceFactoryTApplicative[F] {
     override private[raii] def typeClass = implicitly
   }
 }
 
-object RAII extends LowPriorityRAIIInstances1 {
+object ResourceFactoryT extends LowPriorityResourceFactoryTInstances1 {
 
-  def managed[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): RAII[F, A] = { () =>
+  def managed[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): ResourceFactoryT[F, A] = { () =>
     Applicative[F].point {
       val a = autoCloseable
       new CloseableT[F, A] {
@@ -91,13 +91,13 @@ object RAII extends LowPriorityRAIIInstances1 {
   }
 
   // implicit conversion of SAM type for Scala 2.10 and 2.11
-  implicit final class FunctionRAII[F[_], A](val underlying: () => F[CloseableT[F, A]])
+  implicit final class FunctionResourceFactoryT[F[_], A](val underlying: () => F[CloseableT[F, A]])
       extends AnyVal
-      with RAII[F, A] {
+      with ResourceFactoryT[F, A] {
     override def open(): F[CloseableT[F, A]] = underlying()
   }
 
-  def apply[F[_]: Applicative, A](a: A): RAII[F, A] = { () =>
+  def apply[F[_]: Applicative, A](a: A): ResourceFactoryT[F, A] = { () =>
     Applicative[F].point(new CloseableT[F, A] {
       override def value: A = a
 
@@ -105,7 +105,7 @@ object RAII extends LowPriorityRAIIInstances1 {
     })
   }
 
-  def liftM[F[_]: Applicative, A](fa: F[A]): RAII[F, A] = { () =>
+  def liftM[F[_]: Applicative, A](fa: F[A]): ResourceFactoryT[F, A] = { () =>
     fa.map { a =>
       new CloseableT[F, A] {
         override def value: A = a
@@ -115,7 +115,7 @@ object RAII extends LowPriorityRAIIInstances1 {
     }
   }
 
-  def bind[F[_]: Bind, A, B](fa: RAII[F, A])(f: A => RAII[F, B]): RAII[F, B] = { () =>
+  def bind[F[_]: Bind, A, B](fa: ResourceFactoryT[F, A])(f: A => ResourceFactoryT[F, B]): ResourceFactoryT[F, B] = { () =>
     for {
       closeableA <- fa.open()
       closeableB <- f(closeableA.value).open()
@@ -130,7 +130,7 @@ object RAII extends LowPriorityRAIIInstances1 {
     }
   }
 
-  def ap[F[_]: Applicative, A, B](fa: => RAII[F, A])(f: => RAII[F, (A) => B]): RAII[F, B] = { () =>
+  def ap[F[_]: Applicative, A, B](fa: => ResourceFactoryT[F, A])(f: => ResourceFactoryT[F, (A) => B]): ResourceFactoryT[F, B] = { () =>
     Applicative[F].apply2(fa.open(), f.open()) { (closeableA, closeableF) =>
       val b = closeableF.value(closeableA.value)
       new CloseableT[F, B] {
@@ -146,39 +146,39 @@ object RAII extends LowPriorityRAIIInstances1 {
 
   }
 
-  private[raii] trait RAIIApplicative[F[_]] extends Applicative[RAII[F, ?]] {
+  private[raii] trait ResourceFactoryTApplicative[F[_]] extends Applicative[ResourceFactoryT[F, ?]] {
     private[raii] implicit def typeClass: Applicative[F]
 
-    override def point[A](a: => A): RAII[F, A] = {
-      RAII[F, A](a)
+    override def point[A](a: => A): ResourceFactoryT[F, A] = {
+      ResourceFactoryT[F, A](a)
     }
 
-    override def ap[A, B](fa: => RAII[F, A])(f: => RAII[F, (A) => B]): RAII[F, B] = {
-      RAII.ap(fa)(f)
+    override def ap[A, B](fa: => ResourceFactoryT[F, A])(f: => ResourceFactoryT[F, (A) => B]): ResourceFactoryT[F, B] = {
+      ResourceFactoryT.ap(fa)(f)
     }
   }
 
-  private[raii] trait RAIIMonad[F[_]] extends RAIIApplicative[F] with Monad[RAII[F, ?]] {
+  private[raii] trait ResourceFactoryTMonad[F[_]] extends ResourceFactoryTApplicative[F] with Monad[ResourceFactoryT[F, ?]] {
     private[raii] implicit override def typeClass: Monad[F]
 
-    override def bind[A, B](fa: RAII[F, A])(f: (A) => RAII[F, B]): RAII[F, B] = {
-      RAII.bind(fa)(f)
+    override def bind[A, B](fa: ResourceFactoryT[F, A])(f: (A) => ResourceFactoryT[F, B]): ResourceFactoryT[F, B] = {
+      ResourceFactoryT.bind(fa)(f)
     }
 
   }
 
-  private[raii] trait RAIINondeterminism[F[_]] extends RAIIMonad[F] with Nondeterminism[RAII[F, ?]] {
+  private[raii] trait ResourceFactoryTNondeterminism[F[_]] extends ResourceFactoryTMonad[F] with Nondeterminism[ResourceFactoryT[F, ?]] {
     private[raii] implicit override def typeClass: Nondeterminism[F]
 
-    override def chooseAny[A](head: RAII[F, A], tail: Seq[RAII[F, A]]): RAII[F, (A, Seq[RAII[F, A]])] = { () =>
+    override def chooseAny[A](head: ResourceFactoryT[F, A], tail: Seq[ResourceFactoryT[F, A]]): ResourceFactoryT[F, (A, Seq[ResourceFactoryT[F, A]])] = { () =>
       typeClass.chooseAny(head.open(), tail.map(_.open())).map {
         case (fa, residuals) =>
-          new CloseableT[F, (A, Seq[RAII[F, A]])] {
-            override def value: (A, Seq[RAII[F, A]]) =
+          new CloseableT[F, (A, Seq[ResourceFactoryT[F, A]])] {
+            override def value: (A, Seq[ResourceFactoryT[F, A]]) =
               (fa.value, residuals.map { residual: F[CloseableT[F, A]] =>
                 { () =>
                   residual
-                }: RAII[F, A]
+                }: ResourceFactoryT[F, A]
               })
 
             override def close(): F[Unit] = fa.close()
@@ -189,11 +189,11 @@ object RAII extends LowPriorityRAIIInstances1 {
     }
   }
 
-  implicit val raiiMonadTrans = new MonadTrans[RAII] {
+  implicit val raiiMonadTrans = new MonadTrans[ResourceFactoryT] {
 
-    override def liftM[G[_]: Monad, A](a: G[A]): RAII[G, A] = RAII.liftM(a)
+    override def liftM[G[_]: Monad, A](a: G[A]): ResourceFactoryT[G, A] = ResourceFactoryT.liftM(a)
 
-    override implicit def apply[G[_]: Monad]: Monad[RAII[G, ?]] = raiiMonad
+    override implicit def apply[G[_]: Monad]: Monad[ResourceFactoryT[G, ?]] = raiiMonad
   }
 
 }

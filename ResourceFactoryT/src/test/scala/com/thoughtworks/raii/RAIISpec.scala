@@ -3,9 +3,9 @@ package com.thoughtworks.raii
 import java.io.{File, FileInputStream}
 
 import org.scalatest._
-import com.thoughtworks.raii.RAII._
-import com.thoughtworks.raii.RAIISpec.Exceptions.{CanNotCloseResourceTwice, CanNotOpenResourceTwice}
-import com.thoughtworks.raii.RAIISpec.FakeResource
+import com.thoughtworks.raii.ResourceFactoryT._
+import com.thoughtworks.raii.ResourceFactoryTSpec.Exceptions.{CanNotCloseResourceTwice, CanNotOpenResourceTwice}
+import com.thoughtworks.raii.ResourceFactoryTSpec.FakeResource
 
 import scalaz.syntax.all._
 import scalaz._
@@ -13,7 +13,7 @@ import scala.collection.mutable
 import scala.concurrent.{Await, Promise}
 import scalaz.Id.Id
 
-object RAIISpec {
+object ResourceFactoryTSpec {
 
   object Exceptions {
 
@@ -67,9 +67,9 @@ object RAIISpec {
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-final class RAIISpec extends AsyncFreeSpec with Matchers with Inside {
+final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside {
 
-  import RAIISpec._
+  import ResourceFactoryTSpec._
 
   import Exceptions._
 
@@ -254,7 +254,7 @@ final class RAIISpec extends AsyncFreeSpec with Matchers with Inside {
   "must open and close twice" in {
 
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val idGenerator = RAIISpec.createIdGenerator()
+    val idGenerator = ResourceFactoryTSpec.createIdGenerator()
     val mr = managed(new FakeResource(allOpenedResources, idGenerator))
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
@@ -271,7 +271,7 @@ final class RAIISpec extends AsyncFreeSpec with Matchers with Inside {
 
   "must could be shared" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val idGenerator = RAIISpec.createIdGenerator()
+    val idGenerator = ResourceFactoryTSpec.createIdGenerator()
     val mr = managed(new FakeResource(allOpenedResources, idGenerator))
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
