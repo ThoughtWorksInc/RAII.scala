@@ -28,3 +28,5 @@ lazy val unidoc = project
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
   )
+
+organization in ThisBuild := "com.thoughtworks.raii"
