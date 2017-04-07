@@ -2,7 +2,7 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.atomic.AtomicReference
 
-import com.thoughtworks.raii.ResourceFactoryT.CloseableT
+import com.thoughtworks.raii.ResourceFactoryT.ReleasableT
 
 import scala.annotation.tailrec
 import scala.collection.immutable.Queue
@@ -18,9 +18,9 @@ object Shared {
 
   private[raii] sealed trait State[A]
   private[raii] final case class Closed[A]() extends State[A]
-  private[raii] final case class Opening[A](handlers: Queue[CloseableT[Future, A] => Trampoline[Unit]])
+  private[raii] final case class Opening[A](handlers: Queue[ReleasableT[Future, A] => Trampoline[Unit]])
       extends State[A]
-  private[raii] final case class Open[A](data: CloseableT[Future, A], count: Int) extends State[A]
+  private[raii] final case class Open[A](data: ReleasableT[Future, A], count: Int) extends State[A]
 
   implicit final class SharedOps[A](raii: ResourceFactoryT[Future, A]) {
 
@@ -36,18 +36,18 @@ import Shared._
 private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
     extends AtomicReference[State[A]](Closed())
     with ResourceFactoryT[Future, A]
-    with CloseableT[Future, A] {
+    with ReleasableT[Future, A] {
   private def sharedCloseable = this
   override def value: A = state.get().asInstanceOf[Open[A]].data.value
 
-  override def close(): Future[Unit] = Future.Suspend { () =>
+  override def release(): Future[Unit] = Future.Suspend { () =>
     @tailrec
     def retry(): Future[Unit] = {
       state.get() match {
         case oldState @ Open(data, count) =>
           if (count == 1) {
             if (state.compareAndSet(oldState, Closed())) {
-              data.close()
+              data.release()
             } else {
               retry()
             }
@@ -59,7 +59,7 @@ private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
             }
           }
         case Opening(_) | Closed() =>
-          throw new IllegalStateException("Cannot close more than once")
+          throw new IllegalStateException("Cannot release more than once")
 
       }
     }
@@ -69,12 +69,12 @@ private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
   private def state = this
 
   @tailrec
-  private def complete(data: CloseableT[Future, A]): Trampoline[Unit] = {
+  private def complete(data: ReleasableT[Future, A]): Trampoline[Unit] = {
     state.get() match {
       case oldState @ Opening(handlers) =>
         val newState = Open(data, handlers.length)
         if (state.compareAndSet(oldState, newState)) {
-          handlers.traverse_ { f: (CloseableT[Future, A] => Trampoline[Unit]) =>
+          handlers.traverse_ { f: (ReleasableT[Future, A] => Trampoline[Unit]) =>
             f(sharedCloseable)
           }
         } else {
@@ -86,31 +86,31 @@ private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
   }
 
   @tailrec
-  private def open(handler: CloseableT[Future, A] => Trampoline[Unit]): Unit = {
+  private def acquire(handler: ReleasableT[Future, A] => Trampoline[Unit]): Unit = {
     state.get() match {
       case oldState @ Closed() =>
         if (state.compareAndSet(oldState, Opening(Queue(handler)))) {
-          underlying.open().unsafePerformListen(complete)
+          underlying.acquire().unsafePerformListen(complete)
         } else {
-          open(handler)
+          acquire(handler)
         }
-      case oldState @ Opening(handlers: Queue[CloseableT[Future, A] => Trampoline[Unit]]) =>
+      case oldState @ Opening(handlers: Queue[ReleasableT[Future, A] => Trampoline[Unit]]) =>
         if (state.compareAndSet(oldState, Opening(handlers.enqueue(handler)))) {
           ()
         } else {
-          open(handler)
+          acquire(handler)
         }
       case oldState @ Open(data, count) =>
         if (state.compareAndSet(oldState, oldState.copy(count = count + 1))) {
           handler(sharedCloseable).run
         } else {
-          open(handler)
+          acquire(handler)
         }
     }
 
   }
 
-  override def open(): Future[CloseableT[Future, A]] = {
-    Future.Async(open)
+  override def acquire(): Future[ReleasableT[Future, A]] = {
+    Future.Async(acquire)
   }
 }

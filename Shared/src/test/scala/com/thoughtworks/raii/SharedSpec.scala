@@ -17,7 +17,7 @@ import scalaz.{-\/, EitherT, \/, _}
   */
 class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
 
-  "when working with scalaz's Future, it must asynchronously open and close" in {
+  "when working with scalaz's Future, it must asynchronously acquire and release" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
@@ -41,7 +41,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
 
   "when working with scalaz's EitherT" - {
 
-    "must asynchronously open and close when an exception occurs" ignore {
+    "must asynchronously acquire and release when an exception occurs" ignore {
       val events = mutable.Buffer.empty[String]
       val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
       val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
@@ -69,7 +69,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     }
   }
   "when working with scalaz's Task" - {
-    "must asynchronously open and close" in {
+    "must asynchronously acquire and release" in {
       val events = mutable.Buffer.empty[String]
       val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
       val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
@@ -91,7 +91,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       p.future
     }
 
-    "must asynchronously open and close when an exception occurs" ignore {
+    "must asynchronously acquire and release when an exception occurs" ignore {
       import scalaz.concurrent.Task._
       val events = mutable.Buffer.empty[String]
       val allOpenedResources = mutable.HashMap.empty[String, FakeResource]

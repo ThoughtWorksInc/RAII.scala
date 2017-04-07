@@ -73,7 +73,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
   import Exceptions._
 
-  "must open and close" in {
+  "must acquire and release" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managed(new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
@@ -83,7 +83,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     allOpenedResources.keys shouldNot contain("r0")
   }
 
-  "must close when error occur" ignore {
+  "must release when error occur" ignore {
 
     val events = mutable.Buffer.empty[String]
 
@@ -97,10 +97,10 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
     class MyResource extends AutoCloseable {
       val id = nextId()
-      events += s"open $id"
+      events += s"acquire $id"
 
       override def close(): Unit = {
-        events += s"close $id"
+        events += s"release $id"
       }
     }
 
@@ -114,10 +114,10 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     } catch {
       case _: Boom =>
     }
-    events should be(mutable.Buffer("open 0", "error is coming", "close 0"))
+    events should be(mutable.Buffer("acquire 0", "error is coming", "release 0"))
   }
 
-  "must throw IllegalStateException when close throw exception" ignore {
+  "must throw IllegalStateException when release throw exception" ignore {
 
     val events = mutable.Buffer.empty[String]
 
@@ -131,10 +131,10 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
     class MyResource extends AutoCloseable {
       val id = nextId()
-      events += s"open $id"
+      events += s"acquire $id"
 
       override def close(): Unit = {
-        events += s"close $id"
+        events += s"release $id"
         throw Boom()
       }
     }
@@ -147,10 +147,10 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
       }
     }
 
-    events should be(mutable.Buffer("open r", "error is coming", "close r"))
+    events should be(mutable.Buffer("acquire r", "error is coming", "release r"))
   }
 
-  "must throw Exception when close throw exception and another error occur" ignore {
+  "must throw Exception when release throw exception and another error occur" ignore {
     val events = mutable.Buffer.empty[String]
 
     var seed = 0
@@ -163,10 +163,10 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
     class MyResource extends AutoCloseable {
       val id = nextId()
-      events += s"open $id"
+      events += s"acquire $id"
 
       override def close(): Unit = {
-        events += s"close $id"
+        events += s"release $id"
         throw Boom()
       }
     }
@@ -180,7 +180,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
       }
     }
 
-    events should be(mutable.Buffer("open 0", "error is coming", "close 0"))
+    events should be(mutable.Buffer("acquire 0", "error is coming", "release 0"))
   }
 
   "must extract value" ignore {
@@ -197,10 +197,10 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
     class MyResource extends AutoCloseable {
       val id = nextId()
-      events += s"open $id"
+      events += s"acquire $id"
 
       override def close(): Unit = {
-        events += s"close $id"
+        events += s"release $id"
       }
 
       def generateData() = Some(math.random)
@@ -213,10 +213,10 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
       val data = r.generateData
       data.isDefined should be(true)
     }
-    events should be(mutable.Buffer("open 0", "close 0"))
+    events should be(mutable.Buffer("acquire 0", "release 0"))
   }
 
-  "both of resources must open and close" in {
+  "both of resources must acquire and release" in {
 
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managed(new FakeResource(allOpenedResources, "mr0"))
@@ -233,7 +233,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     allOpenedResources.keys shouldNot contain("mr1")
   }
 
-  "both of resources must open and close in complicated usage" in {
+  "both of resources must acquire and release in complicated usage" in {
 
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managed(new FakeResource(allOpenedResources, "mr0"))
@@ -251,7 +251,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     allOpenedResources.keys shouldNot contain("mr1")
 
   }
-  "must open and close twice" in {
+  "must acquire and release twice" in {
 
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val idGenerator = ResourceFactoryTSpec.createIdGenerator()
