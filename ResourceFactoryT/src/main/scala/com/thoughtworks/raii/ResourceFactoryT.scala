@@ -49,9 +49,9 @@ trait ResourceFactoryT[F[_], A] extends Any {
 
 private[raii] trait LowPriorityResourceFactoryTInstances3 { this: ResourceFactoryT.type =>
 
-  implicit def raiiNondeterminism[F[_], L](implicit F0: Nondeterminism[F]): Nondeterminism[ResourceFactoryT[F, ?]] =
-    new ResourceFactoryTNondeterminism[F] {
-      private[raii] override def typeClass = implicitly
+  implicit def resourceFactoryTApplicative[F[_]: Applicative]: Applicative[ResourceFactoryT[F, ?]] =
+    new ResourceFactoryTApplicative[F] {
+      override private[raii] def typeClass = implicitly
     }
 
 }
@@ -59,7 +59,7 @@ private[raii] trait LowPriorityResourceFactoryTInstances3 { this: ResourceFactor
 private[raii] trait LowPriorityResourceFactoryTInstances2 extends LowPriorityResourceFactoryTInstances3 {
   this: ResourceFactoryT.type =>
 
-  implicit def raiiMonad[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = new ResourceFactoryTMonad[F] {
+  implicit def resourceFactoryTMonad[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = new ResourceFactoryTMonad[F] {
     private[raii] override def typeClass = implicitly
   }
 
@@ -68,9 +68,9 @@ private[raii] trait LowPriorityResourceFactoryTInstances2 extends LowPriorityRes
 private[raii] trait LowPriorityResourceFactoryTInstances1 extends LowPriorityResourceFactoryTInstances2 {
   this: ResourceFactoryT.type =>
 
-  implicit def raiiApplicative[F[_]: Applicative]: Applicative[ResourceFactoryT[F, ?]] =
-    new ResourceFactoryTApplicative[F] {
-      override private[raii] def typeClass = implicitly
+  implicit def resourceFactoryTNondeterminism[F[_], L](implicit F0: Nondeterminism[F]): Nondeterminism[ResourceFactoryT[F, ?]] =
+    new ResourceFactoryTNondeterminism[F] {
+      private[raii] override def typeClass = implicitly
     }
 }
 
@@ -200,11 +200,11 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances1 {
     }
   }
 
-  implicit val raiiMonadTrans = new MonadTrans[ResourceFactoryT] {
+  implicit val resourceFactoryTMonadTrans = new MonadTrans[ResourceFactoryT] {
 
     override def liftM[G[_]: Monad, A](a: G[A]): ResourceFactoryT[G, A] = ResourceFactoryT.liftM(a)
 
-    override implicit def apply[G[_]: Monad]: Monad[ResourceFactoryT[G, ?]] = raiiMonad
+    override implicit def apply[G[_]: Monad]: Monad[ResourceFactoryT[G, ?]] = resourceFactoryTMonad
   }
 
 }
