@@ -7,10 +7,13 @@ import scala.language.higherKinds
   */
 package object raii {
 
+  /** @template */
   type ResourceFactory[A] = ResourceFactoryT[scalaz.Id.Id, A]
 
+  /** @template */
   type RAIIT[F[_], A] = ResourceFactoryT[F, A]
 
+  /** @template */
   type RAII[A] = ResourceFactory[A]
 
 }
