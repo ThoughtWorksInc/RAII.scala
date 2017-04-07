@@ -68,14 +68,24 @@ private[raii] trait LowPriorityResourceFactoryTInstances2 extends LowPriorityRes
 private[raii] trait LowPriorityResourceFactoryTInstances1 extends LowPriorityResourceFactoryTInstances2 {
   this: ResourceFactoryT.type =>
 
-  implicit def resourceFactoryTNondeterminism[F[_], L](
+  implicit def resourceFactoryTNondeterminism[F[_]](
       implicit F0: Nondeterminism[F]): Nondeterminism[ResourceFactoryT[F, ?]] =
     new ResourceFactoryTNondeterminism[F] {
       private[raii] override def typeClass = implicitly
     }
 }
 
-object ResourceFactoryT extends LowPriorityResourceFactoryTInstances1 {
+private[raii] trait LowPriorityResourceFactoryTInstances0 extends LowPriorityResourceFactoryTInstances1 {
+  this: ResourceFactoryT.type =>
+
+  implicit def resourceFactoryTNondeterminism[F[_], S](
+      implicit F0: MonadError[F, S]): MonadError[ResourceFactoryT[F, ?], S] =
+    new ResourceFactoryTMonadError[F, S] {
+      private[raii] override def typeClass = implicitly
+    }
+}
+
+object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
 
   def managed[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): ResourceFactoryT[F, A] = { () =>
     Applicative[F].point {
@@ -155,6 +165,56 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances1 {
         }
     }
 
+  }
+
+  private def catchError[F[_]: MonadError[?[_], S], S, A](fa: F[A]): F[S \/ A] = {
+    fa.map(_.right[S]).handleError(_.left[A].point[F])
+  }
+
+  private[raii] trait ResourceFactoryTMonadError[F[_], S]
+      extends MonadError[ResourceFactoryT[F, ?], S]
+      with ResourceFactoryTPoint[F] {
+    private[raii] implicit def typeClass: MonadError[F, S]
+
+    override def raiseError[A](e: S): ResourceFactoryT[F, A] = { () =>
+      typeClass.raiseError(e)
+    }
+
+    override def handleError[A](fa: ResourceFactoryT[F, A])(f: (S) => ResourceFactoryT[F, A]): ResourceFactoryT[F, A] = {
+      () =>
+        fa.acquire().handleError { s =>
+          f(s).acquire()
+        }
+    }
+
+    override def bind[A, B](fa: ResourceFactoryT[F, A])(f: A => ResourceFactoryT[F, B]): ResourceFactoryT[F, B] = {
+      () =>
+        catchError(fa.acquire()).flatMap {
+          case \/-(releasableA) =>
+            catchError(f(releasableA.value).acquire()).flatMap {
+              case \/-(releasableB) =>
+                new ReleasableT[F, B] {
+                  override def value: B = releasableB.value
+                  override def release(): F[Unit] = {
+                    catchError(releasableB.release()).flatMap {
+                      case \/-(()) =>
+                        releasableA.release()
+                      case -\/(s) =>
+                        releasableA.release().flatMap { _ =>
+                          typeClass.raiseError(s)
+                        }
+                    }
+                  }
+                }.point[F]
+              case -\/(s) =>
+                releasableA.release().flatMap { _ =>
+                  typeClass.raiseError(s)
+                }
+            }
+          case either @ -\/(s) =>
+            typeClass.raiseError(s)
+        }
+    }
   }
 
   private[raii] trait ResourceFactoryTNondeterminism[F[_]]
