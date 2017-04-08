@@ -177,7 +177,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     private[raii] implicit def typeClass: MonadError[F, S]
 
     override def raiseError[A](e: S): ResourceFactoryT[F, A] = { () =>
-      typeClass.raiseError(e)
+      typeClass.raiseError[ReleasableT[F, A]](e)
     }
 
     override def handleError[A](fa: ResourceFactoryT[F, A])(f: (S) => ResourceFactoryT[F, A]): ResourceFactoryT[F, A] = {
@@ -191,7 +191,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
       () =>
         catchError(fa.acquire()).flatMap {
           case \/-(releasableA) =>
-            catchError(f(releasableA.value).acquire()).flatMap {
+            catchError(f(releasableA.value).acquire()).flatMap[ReleasableT[F, B]] {
               case \/-(releasableB) =>
                 new ReleasableT[F, B] {
                   override def value: B = releasableB.value
@@ -201,18 +201,18 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
                         releasableA.release()
                       case -\/(s) =>
                         releasableA.release().flatMap { _ =>
-                          typeClass.raiseError(s)
+                          typeClass.raiseError[Unit](s)
                         }
                     }
                   }
                 }.point[F]
               case -\/(s) =>
                 releasableA.release().flatMap { _ =>
-                  typeClass.raiseError(s)
+                  typeClass.raiseError[ReleasableT[F, B]](s)
                 }
             }
           case either @ -\/(s) =>
-            typeClass.raiseError(s)
+            typeClass.raiseError[ReleasableT[F, B]](s)
         }
     }
   }
