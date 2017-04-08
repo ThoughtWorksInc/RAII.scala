@@ -1,6 +1,7 @@
 package com.thoughtworks
 
 import scala.language.higherKinds
+import scalaz.\/
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
@@ -8,7 +9,7 @@ import scala.language.higherKinds
 package object raii {
 
   /** @template */
-  type ResourceFactory[A] = ResourceFactoryT[scalaz.Id.Id, A]
+  type ResourceFactory[A] = ResourceFactoryT[Throwable \/ ?, A]
 
   /** @template */
   type RAIIT[F[_], A] = ResourceFactoryT[F, A]

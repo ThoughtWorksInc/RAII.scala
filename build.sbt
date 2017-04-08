@@ -8,6 +8,12 @@ lazy val ResourceFactoryTJS = ResourceFactoryT.js.addSbtFiles(file("../build.sbt
 
 lazy val Shared = project.dependsOn(ResourceFactoryTJVM, ResourceFactoryTJVM % "test->test")
 
+lazy val `sde-raii` = crossProject.crossType(CrossType.Pure).dependsOn(ResourceFactoryT, `package`)
+
+lazy val `sde-raiiJVM` = `sde-raii`.jvm.addSbtFiles(file("../build.sbt.shared"))
+
+lazy val `sde-raiiJS` = `sde-raii`.js.addSbtFiles(file("../build.sbt.shared"))
+
 lazy val EitherTNondeterminism = crossProject.crossType(CrossType.Pure)
 
 lazy val EitherTNondeterminismJVM = EitherTNondeterminism.jvm.addSbtFiles(file("../build.sbt.shared"))
