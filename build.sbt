@@ -26,7 +26,8 @@ lazy val unidoc = project
     UnidocKeys.unidocProjectFilter in ScalaUnidoc in UnidocKeys.unidoc := {
       inAnyProject -- inProjects(ResourceFactoryTJS, EitherTNondeterminismJS, packageJS)
     },
-    addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
+    addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
+    scalacOptions += "-Xexperimental"
   )
 
 organization in ThisBuild := "com.thoughtworks.raii"
