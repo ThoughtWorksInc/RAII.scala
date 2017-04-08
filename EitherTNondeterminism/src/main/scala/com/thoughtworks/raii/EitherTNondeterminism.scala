@@ -1,7 +1,7 @@
 package com.thoughtworks.raii
 
 import scala.language.higherKinds
-import scalaz.{Apply, DisjunctionT, EitherT, Monoid, Nondeterminism, Reducer, \/}
+import scalaz.{Apply, EitherT, Monoid, Nondeterminism, Reducer, \/}
 
 object EitherTNondeterminism {
   implicit def eitherTNondeterminism[F[_], L](implicit F0: Nondeterminism[F]): Nondeterminism[EitherT[F, L, ?]] =
@@ -13,20 +13,20 @@ object EitherTNondeterminism {
 private[raii] trait EitherTNondeterminism[F[_], L] extends Nondeterminism[EitherT[F, L, ?]] {
   implicit protected def F: Nondeterminism[F]
 
-  override def chooseAny[A](head: DisjunctionT[F, L, A],
-                            tail: Seq[DisjunctionT[F, L, A]]): DisjunctionT[F, L, (A, Seq[DisjunctionT[F, L, A]])] =
+  override def chooseAny[A](head: EitherT[F, L, A],
+                            tail: Seq[EitherT[F, L, A]]): EitherT[F, L, (A, Seq[EitherT[F, L, A]])] =
     new EitherT(F.map(F.chooseAny(head.run, tail map (_.run))) {
       case (a, residuals) =>
         a.map((_, residuals.map(new EitherT(_))))
     })
 
-  override def bind[A, B](fa: DisjunctionT[F, L, A])(f: (A) => DisjunctionT[F, L, B]): DisjunctionT[F, L, B] =
+  override def bind[A, B](fa: EitherT[F, L, A])(f: (A) => EitherT[F, L, B]): EitherT[F, L, B] =
     fa flatMap f
 
-  override def point[A](a: => A): DisjunctionT[F, L, A] = EitherT.eitherTMonad[F, L].point(a)
+  override def point[A](a: => A): EitherT[F, L, A] = EitherT.eitherTMonad[F, L].point(a)
 
-  override def reduceUnordered[A, M](fs: Seq[DisjunctionT[F, L, A]])(
-      implicit R: Reducer[A, M]): DisjunctionT[F, L, M] = {
+  override def reduceUnordered[A, M](fs: Seq[EitherT[F, L, A]])(
+      implicit R: Reducer[A, M]): EitherT[F, L, M] = {
     import R.monoid
     val AE = Apply[L \/ ?]
     val RR: Reducer[L \/ A, L \/ M] =
