@@ -12,12 +12,17 @@ import scala.util.control.NonFatal
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-object raii extends MonadicFactory.WithTypeClass[MonadError[?[_], Throwable], ResourceFactory] {
-  override val typeClass = ResourceFactoryT.resourceFactoryTMonadError[Throwable \/ ?, Throwable]
-
+object raii {
+  object RAIIFactory extends MonadicFactory.WithTypeClass[MonadError[?[_], Throwable], ResourceFactory] {
+    override val typeClass = ResourceFactoryT.resourceFactoryTMonadError[Throwable \/ ?, Throwable]
+  }
   @bundle
   private[raii] class Macros(val c: whitebox.Context) {
     import c.universe._
+
+    def apply(block: Tree): Tree = {
+      q"_root_.com.thoughtworks.raii.sde.raii.reduce(_root_.com.thoughtworks.raii.sde.raii.RAIIFactory($block))"
+    }
 
     def using[A: WeakTypeTag](autoCloseable: Tree): Tree = {
       q"""
@@ -28,6 +33,13 @@ object raii extends MonadicFactory.WithTypeClass[MonadError[?[_], Throwable], Re
       """
     }
 
+  }
+
+  def reduce[A](resourceFactory: ResourceFactory[A]): A = {
+    resourceFactory.run match {
+      case \/-(a) => a
+      case -\/(e) => throw e
+    }
   }
 
   def managed[A <: AutoCloseable](autoCloseable: => A): ResourceFactory[A] = {
@@ -55,4 +67,5 @@ object raii extends MonadicFactory.WithTypeClass[MonadError[?[_], Throwable], Re
   }
 
   def using[A <: AutoCloseable](autoCloseable: => A): A = macro Macros.using[A]
+  def apply[A](block: => A): A = macro Macros.apply
 }

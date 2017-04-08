@@ -11,28 +11,26 @@ import scalaz.{-\/, \/-}
   */
 final class raiiSpec extends FreeSpec with Matchers {
 
-  private def reduce[A](resourceFactory: ResourceFactory[A]): A = {
-    resourceFactory.run match {
-      case \/-(a) => a
-      case -\/(e) => throw e
-    }
-  }
   "using" in {
+
     var count = 0
     var isClosed = true
-    reduce(raii {
+
+    final class FakeResouce extends AutoCloseable {
+      count += 1
       isClosed should be(true)
-      using(new AutoCloseable {
-        count += 1
-        isClosed should be(true)
-        isClosed = false
-        override def close(): Unit = {
-          isClosed should be(false)
-          isClosed = true
-        }
-      })
+      isClosed = false
+      override def close(): Unit = {
+        isClosed should be(false)
+        isClosed = true
+      }
+    }
+
+    raii {
+      isClosed should be(true)
+      using(new FakeResouce)
       isClosed should be(false)
-    })
+    }
 
     isClosed should be(true)
     count should be(1)
