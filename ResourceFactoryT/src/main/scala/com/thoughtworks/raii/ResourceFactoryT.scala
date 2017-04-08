@@ -78,7 +78,7 @@ private[raii] trait LowPriorityResourceFactoryTInstances1 extends LowPriorityRes
 private[raii] trait LowPriorityResourceFactoryTInstances0 extends LowPriorityResourceFactoryTInstances1 {
   this: ResourceFactoryT.type =>
 
-  implicit def resourceFactoryTNondeterminism[F[_], S](
+  implicit def resourceFactoryTMonadError[F[_], S](
       implicit F0: MonadError[F, S]): MonadError[ResourceFactoryT[F, ?], S] =
     new ResourceFactoryTMonadError[F, S] {
       private[raii] override def typeClass = implicitly
