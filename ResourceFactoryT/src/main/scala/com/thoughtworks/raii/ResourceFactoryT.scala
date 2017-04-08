@@ -7,7 +7,7 @@ import scala.collection.immutable.Queue
 import scala.language.higherKinds
 import scalaz.Free.Trampoline
 import scalaz.Leibniz.===
-import scalaz.{Id, _}
+import scalaz._, Id.Id
 import scalaz.std.iterable._
 import scalaz.syntax.all._
 
@@ -87,13 +87,14 @@ private[raii] trait LowPriorityResourceFactoryTInstances0 extends LowPriorityRes
 
 object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
 
-  def managed[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): ResourceFactoryT[F, A] = { () =>
-    Applicative[F].point {
-      val a = autoCloseable
-      new ReleasableT[F, A] {
-        override def value: A = a
+  def managed[A <: AutoCloseable](autoCloseable: => A): ResourceFactoryT[Id, A] = managedT[Id, A](autoCloseable)
 
-        override def release(): F[Unit] = Applicative[F].point(a.close())
+  def managedT[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): ResourceFactoryT[F, A] = { () =>
+    Applicative[F].point {
+      new ReleasableT[F, A] {
+        override val value: A = autoCloseable
+
+        override def release(): F[Unit] = Applicative[F].point(value.close())
       }
     }
   }
@@ -116,7 +117,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
 
     override def point[A](a: => A): ResourceFactoryT[F, A] = { () =>
       Applicative[F].point(new ReleasableT[F, A] {
-        override def value: A = a
+        override val value: A = a
 
         override def release(): F[Unit] = Applicative[F].point(())
       })
@@ -130,9 +131,8 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     override def ap[A, B](fa: => ResourceFactoryT[F, A])(f: => ResourceFactoryT[F, (A) => B]): ResourceFactoryT[F, B] = {
       () =>
         Applicative[F].apply2(fa.acquire(), f.acquire()) { (releasableA, releasableF) =>
-          val b = releasableF.value(releasableA.value)
           new ReleasableT[F, B] {
-            override def value: B = b
+            override val value: B = releasableF.value(releasableA.value)
 
             override def release(): F[Unit] = {
               Applicative[F].apply2(releasableA.release(), releasableF.release()) { (_: Unit, _: Unit) =>
@@ -228,7 +228,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
       typeClass.chooseAny(head.acquire(), tail.map(_.acquire())).map {
         case (fa, residuals) =>
           new ReleasableT[F, (A, Seq[ResourceFactoryT[F, A]])] {
-            override def value: (A, Seq[ResourceFactoryT[F, A]]) =
+            override val value: (A, Seq[ResourceFactoryT[F, A]]) =
               (fa.value, residuals.map { residual: F[ReleasableT[F, A]] =>
                 { () =>
                   residual
@@ -248,7 +248,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     override def liftM[F[_]: Monad, A](fa: F[A]): ResourceFactoryT[F, A] = { () =>
       fa.map { a =>
         new ReleasableT[F, A] {
-          override def value: A = a
+          override val value: A = a
 
           override def release(): F[Unit] = Applicative[F].point(())
         }

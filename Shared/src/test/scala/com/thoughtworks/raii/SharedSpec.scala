@@ -1,6 +1,6 @@
 package com.thoughtworks.raii
 
-import com.thoughtworks.raii.ResourceFactoryT.managed
+import com.thoughtworks.raii.ResourceFactoryT._
 import com.thoughtworks.raii.ResourceFactoryTSpec.Exceptions.{Boom, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.ResourceFactoryTSpec.FakeResource
 import com.thoughtworks.raii.Shared.SharedOps
@@ -20,7 +20,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
   "when working with scalaz's Future, it must asynchronously acquire and release" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
+    val mr0 = managedT[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
     val asynchronousResource: Future[Unit] = mr0.using { r0 =>
       Future.delay {
@@ -44,7 +44,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     "must asynchronously acquire and release when an exception occurs" ignore {
       val events = mutable.Buffer.empty[String]
       val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-      val mr0 = managed[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
+      val mr0 = managedT[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
       allOpenedResources.keys shouldNot contain("r0")
       val asynchronousResource: Task[Unit] = new Task(mr0.using { r0 =>
         Future.delay {
@@ -72,7 +72,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     "must asynchronously acquire and release" in {
       val events = mutable.Buffer.empty[String]
       val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-      val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
+      val mr0 = managedT[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
       allOpenedResources.keys shouldNot contain("r0")
       val asynchronousResource: Task[Unit] = mr0.using { r0 =>
         Task.delay {
@@ -95,7 +95,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       import scalaz.concurrent.Task._
       val events = mutable.Buffer.empty[String]
       val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-      val mr0 = managed[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
+      val mr0 = managedT[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
       allOpenedResources.keys shouldNot contain("r0")
       val asynchronousResource: Task[Unit] = mr0.using { r0 =>
         events += "using r0"
@@ -119,7 +119,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr: ResourceFactoryT[Future, FakeResource] =
-      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0"))
+      managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0"))
     allOpenedResources.keys shouldNot contain("0")
 
     recoverToSucceededIf[CanNotOpenResourceTwice] {
@@ -151,7 +151,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr: ResourceFactoryT[Future, FakeResource] =
-      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+      managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
     allOpenedResources.keys shouldNot contain("0")
 
     val usingResource: ResourceFactoryT[Future, mutable.Buffer[String]] = mr.flatMap { r1 =>
@@ -181,7 +181,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
 
     val sharedResource: ResourceFactoryT[Future, FakeResource] =
-      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+      managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
 
     val mappedResource: ResourceFactoryT[Future, Throwable \/ FakeResource] = sharedResource.map(\/.right)
 
@@ -210,7 +210,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
 
     val sharedResource: ResourceFactoryT[Future, FakeResource] =
-      managed[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+      managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
 
     val mappedResource: ResourceFactoryT[Future, Throwable \/ FakeResource] = sharedResource.map(\/.right)
 
