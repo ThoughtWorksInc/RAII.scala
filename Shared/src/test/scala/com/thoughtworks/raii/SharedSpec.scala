@@ -2,7 +2,7 @@ package com.thoughtworks.raii
 
 import com.thoughtworks.raii.ResourceFactoryT._
 import com.thoughtworks.raii.ResourceFactoryTSpec.Exceptions.{Boom, CanNotOpenResourceTwice}
-import com.thoughtworks.raii.ResourceFactoryTSpec.FakeResource
+import com.thoughtworks.raii.ResourceFactoryTSpec._
 import com.thoughtworks.raii.Shared.SharedOps
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
 

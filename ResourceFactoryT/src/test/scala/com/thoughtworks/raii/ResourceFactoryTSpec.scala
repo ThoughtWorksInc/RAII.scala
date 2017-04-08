@@ -11,9 +11,22 @@ import scalaz.syntax.all._
 import scalaz._
 import scala.collection.mutable
 import scala.concurrent.{Await, Promise}
+import scala.language.higherKinds
 import scalaz.Id.Id
 
-object ResourceFactoryTSpec {
+private[raii] object ResourceFactoryTSpec {
+
+  def managed[A <: AutoCloseable](autoCloseable: => A): ResourceFactoryT[Id, A] = managedT[Id, A](autoCloseable)
+
+  def managedT[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): ResourceFactoryT[F, A] = { () =>
+    Applicative[F].point {
+      new ReleasableT[F, A] {
+        override val value: A = autoCloseable
+
+        override def release(): F[Unit] = Applicative[F].point(value.close())
+      }
+    }
+  }
 
   object Exceptions {
 
@@ -37,9 +50,9 @@ object ResourceFactoryTSpec {
   }
 
   final class FakeResource(allOpenedResources: mutable.HashMap[String, FakeResource], idGenerator: () => String)
-    extends {
-      val id = idGenerator()
-    } with AutoCloseable {
+      extends {
+    val id = idGenerator()
+  } with AutoCloseable {
 
     def this(allOpenedResources: mutable.HashMap[String, FakeResource], constantId: String) = {
       this(allOpenedResources, { () =>
