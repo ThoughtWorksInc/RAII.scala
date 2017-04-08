@@ -30,13 +30,6 @@ object raii extends MonadicFactory.WithTypeClass[MonadError[?[_], Throwable], Re
 
   }
 
-  def reduce[A](either: Throwable \/ A): A = {
-    either match {
-      case \/-(a) => a
-      case -\/(e) => throw e
-    }
-  }
-
   def managed[A <: AutoCloseable](autoCloseable: => A): ResourceFactory[A] = {
     new ResourceFactory[A] {
       override def acquire(): Throwable \/ ResourceFactoryT.ReleasableT[Throwable \/ ?, A] = {
