@@ -32,7 +32,7 @@ lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
     UnidocKeys.unidocProjectFilter in ScalaUnidoc in UnidocKeys.unidoc := {
-      inAnyProject -- inProjects(ResourceFactoryTJS, EitherTNondeterminismJS, packageJS)
+      inProjects(ResourceFactoryTJVM, packageJVM, Shared)
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
     scalacOptions += "-Xexperimental"
