@@ -27,7 +27,7 @@ trait ResourceFactoryT[F[_], A] extends Any {
     }
   }
 
-  def run(implicit monad: Bind[F]): F[A] = {
+  final def run(implicit monad: Bind[F]): F[A] = {
     acquire().flatMap { fa =>
       fa.release().map { _ =>
         fa.value
