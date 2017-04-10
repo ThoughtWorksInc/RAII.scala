@@ -44,9 +44,9 @@ object raii {
 
   def managed[A <: AutoCloseable](autoCloseable: => A): ResourceFactory[A] = {
     new ResourceFactory[A] {
-      override def acquire(): Throwable \/ ResourceFactoryT.ReleasableT[Throwable \/ ?, A] = {
+      override def acquire(): Throwable \/ ResourceFactoryT.ResourceT[Throwable \/ ?, A] = {
         try {
-          \/-(new ResourceFactoryT.ReleasableT[Throwable \/ ?, A] {
+          \/-(new ResourceFactoryT.ResourceT[Throwable \/ ?, A] {
             override val value = autoCloseable
 
             override def release() = {

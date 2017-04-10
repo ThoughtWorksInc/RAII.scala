@@ -2,7 +2,7 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.atomic.AtomicReference
 
-import com.thoughtworks.raii.ResourceFactoryT.ReleasableT
+import com.thoughtworks.raii.ResourceFactoryT.ResourceT
 
 import scala.annotation.tailrec
 import scala.collection.immutable.Queue
@@ -18,9 +18,9 @@ object Shared {
 
   private[raii] sealed trait State[A]
   private[raii] final case class Closed[A]() extends State[A]
-  private[raii] final case class Opening[A](handlers: Queue[ReleasableT[Future, A] => Trampoline[Unit]])
+  private[raii] final case class Opening[A](handlers: Queue[ResourceT[Future, A] => Trampoline[Unit]])
       extends State[A]
-  private[raii] final case class Open[A](data: ReleasableT[Future, A], count: Int) extends State[A]
+  private[raii] final case class Open[A](data: ResourceT[Future, A], count: Int) extends State[A]
 
   implicit final class SharedOps[A](raii: ResourceFactoryT[Future, A]) {
 
@@ -36,7 +36,7 @@ import Shared._
 private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
     extends AtomicReference[State[A]](Closed())
     with ResourceFactoryT[Future, A]
-    with ReleasableT[Future, A] {
+    with ResourceT[Future, A] {
   private def sharedCloseable = this
   override def value: A = state.get().asInstanceOf[Open[A]].data.value
 
@@ -69,12 +69,12 @@ private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
   private def state = this
 
   @tailrec
-  private def complete(data: ReleasableT[Future, A]): Trampoline[Unit] = {
+  private def complete(data: ResourceT[Future, A]): Trampoline[Unit] = {
     state.get() match {
       case oldState @ Opening(handlers) =>
         val newState = Open(data, handlers.length)
         if (state.compareAndSet(oldState, newState)) {
-          handlers.traverse_ { f: (ReleasableT[Future, A] => Trampoline[Unit]) =>
+          handlers.traverse_ { f: (ResourceT[Future, A] => Trampoline[Unit]) =>
             f(sharedCloseable)
           }
         } else {
@@ -86,7 +86,7 @@ private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
   }
 
   @tailrec
-  private def acquire(handler: ReleasableT[Future, A] => Trampoline[Unit]): Unit = {
+  private def acquire(handler: ResourceT[Future, A] => Trampoline[Unit]): Unit = {
     state.get() match {
       case oldState @ Closed() =>
         if (state.compareAndSet(oldState, Opening(Queue(handler)))) {
@@ -94,7 +94,7 @@ private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
         } else {
           acquire(handler)
         }
-      case oldState @ Opening(handlers: Queue[ReleasableT[Future, A] => Trampoline[Unit]]) =>
+      case oldState @ Opening(handlers: Queue[ResourceT[Future, A] => Trampoline[Unit]]) =>
         if (state.compareAndSet(oldState, Opening(handlers.enqueue(handler)))) {
           ()
         } else {
@@ -110,7 +110,7 @@ private[raii] final class Shared[A](underlying: ResourceFactoryT[Future, A])
 
   }
 
-  override def acquire(): Future[ReleasableT[Future, A]] = {
+  override def acquire(): Future[ResourceT[Future, A]] = {
     Future.Async(acquire)
   }
 }

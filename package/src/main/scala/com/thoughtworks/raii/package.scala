@@ -1,7 +1,8 @@
 package com.thoughtworks
 
 import scala.language.higherKinds
-import scalaz.\/
+import scalaz._
+import scalaz.concurrent._
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
@@ -16,5 +17,11 @@ package object raii {
 
   /** @template */
   type RAII[A] = ResourceFactory[A]
+
+  /** @template */
+  type RAIIFuture[A] = ResourceFactoryT[Future, A]
+
+  /** @template */
+  type RAIITask[A] = EitherT[RAIIFuture, Throwable, A]
 
 }

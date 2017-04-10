@@ -15,7 +15,7 @@ trait ResourceFactoryT[F[_], A] extends Any {
 
   import ResourceFactoryT._
 
-  def acquire(): F[ReleasableT[F, A]]
+  def acquire(): F[ResourceT[F, A]]
 
   private[raii] final def using[B](f: A => F[B])(implicit monad: Bind[F]): F[B] = {
     acquire().flatMap { fa =>
@@ -87,24 +87,24 @@ private[raii] trait LowPriorityResourceFactoryTInstances0 extends LowPriorityRes
 
 object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
 
-  trait ReleasableT[F[_], +A] {
+  trait ResourceT[F[_], +A] {
     def value: A
 
     def release(): F[Unit]
   }
 
   // implicit conversion of SAM type for Scala 2.10 and 2.11
-  implicit final class FunctionResourceFactoryT[F[_], A](val underlying: () => F[ReleasableT[F, A]])
+  implicit final class FunctionResourceFactoryT[F[_], A](val underlying: () => F[ResourceT[F, A]])
       extends AnyVal
       with ResourceFactoryT[F, A] {
-    override def acquire(): F[ReleasableT[F, A]] = underlying()
+    override def acquire(): F[ResourceT[F, A]] = underlying()
   }
 
   private[raii] trait ResourceFactoryTPoint[F[_]] extends Applicative[ResourceFactoryT[F, ?]] {
     private[raii] implicit def typeClass: Applicative[F]
 
     override def point[A](a: => A): ResourceFactoryT[F, A] = { () =>
-      Applicative[F].point(new ReleasableT[F, A] {
+      Applicative[F].point(new ResourceT[F, A] {
         override val value: A = a
 
         override def release(): F[Unit] = Applicative[F].point(())
@@ -119,7 +119,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     override def ap[A, B](fa: => ResourceFactoryT[F, A])(f: => ResourceFactoryT[F, (A) => B]): ResourceFactoryT[F, B] = {
       () =>
         Applicative[F].apply2(fa.acquire(), f.acquire()) { (releasableA, releasableF) =>
-          new ReleasableT[F, B] {
+          new ResourceT[F, B] {
             override val value: B = releasableF.value(releasableA.value)
 
             override def release(): F[Unit] = {
@@ -143,7 +143,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
           releasableA <- fa.acquire()
           releasableB <- f(releasableA.value).acquire()
         } yield {
-          new ReleasableT[F, B] {
+          new ResourceT[F, B] {
             override def value: B = releasableB.value
 
             override def release(): F[Unit] = {
@@ -165,7 +165,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     private[raii] implicit def typeClass: MonadError[F, S]
 
     override def raiseError[A](e: S): ResourceFactoryT[F, A] = { () =>
-      typeClass.raiseError[ReleasableT[F, A]](e)
+      typeClass.raiseError[ResourceT[F, A]](e)
     }
 
     override def handleError[A](fa: ResourceFactoryT[F, A])(f: (S) => ResourceFactoryT[F, A]): ResourceFactoryT[F, A] = {
@@ -179,9 +179,9 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
       () =>
         catchError(fa.acquire()).flatMap {
           case \/-(releasableA) =>
-            catchError(f(releasableA.value).acquire()).flatMap[ReleasableT[F, B]] {
+            catchError(f(releasableA.value).acquire()).flatMap[ResourceT[F, B]] {
               case \/-(releasableB) =>
-                new ReleasableT[F, B] {
+                new ResourceT[F, B] {
                   override def value: B = releasableB.value
                   override def release(): F[Unit] = {
                     catchError(releasableB.release()).flatMap {
@@ -196,11 +196,11 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
                 }.point[F]
               case -\/(s) =>
                 releasableA.release().flatMap { _ =>
-                  typeClass.raiseError[ReleasableT[F, B]](s)
+                  typeClass.raiseError[ResourceT[F, B]](s)
                 }
             }
           case either @ -\/(s) =>
-            typeClass.raiseError[ReleasableT[F, B]](s)
+            typeClass.raiseError[ResourceT[F, B]](s)
         }
     }
   }
@@ -215,9 +215,9 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
         tail: Seq[ResourceFactoryT[F, A]]): ResourceFactoryT[F, (A, Seq[ResourceFactoryT[F, A]])] = { () =>
       typeClass.chooseAny(head.acquire(), tail.map(_.acquire())).map {
         case (fa, residuals) =>
-          new ReleasableT[F, (A, Seq[ResourceFactoryT[F, A]])] {
+          new ResourceT[F, (A, Seq[ResourceFactoryT[F, A]])] {
             override val value: (A, Seq[ResourceFactoryT[F, A]]) =
-              (fa.value, residuals.map { residual: F[ReleasableT[F, A]] =>
+              (fa.value, residuals.map { residual: F[ResourceT[F, A]] =>
                 { () =>
                   residual
                 }: ResourceFactoryT[F, A]
@@ -235,7 +235,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
 
     override def liftM[F[_]: Monad, A](fa: F[A]): ResourceFactoryT[F, A] = { () =>
       fa.map { a =>
-        new ReleasableT[F, A] {
+        new ResourceT[F, A] {
           override val value: A = a
 
           override def release(): F[Unit] = Applicative[F].point(())

@@ -20,7 +20,7 @@ private[raii] object ResourceFactoryTSpec {
 
   def managedT[F[_]: Applicative, A <: AutoCloseable](autoCloseable: => A): ResourceFactoryT[F, A] = { () =>
     Applicative[F].point {
-      new ReleasableT[F, A] {
+      new ResourceT[F, A] {
         override val value: A = autoCloseable
 
         override def release(): F[Unit] = Applicative[F].point(value.close())

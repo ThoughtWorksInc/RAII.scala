@@ -20,17 +20,17 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
   type PowerFuture[A] = EitherT[ResourceFactoryT[Future, ?], Throwable, A]
 
   class FutureAsyncFakeResource(allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource],
-                                allCallBack: mutable.HashMap[String, ReleasableT[Future, String] => Unit],
+                                allCallBack: mutable.HashMap[String, ResourceT[Future, String] => Unit],
                                 idGenerator: () => String)
       extends FutureDelayFakeResource(allOpenedResources, idGenerator) {
 
-    override def acquire(): Future[ReleasableT[Future, String]] = {
+    override def acquire(): Future[ResourceT[Future, String]] = {
       if (allOpenedResources.contains(id)) {
         throw CanNotOpenResourceTwice()
       }
       allOpenedResources(id) = this
 
-      Future.async { f => //: (ReleasableT[Future, String] => Unit)
+      Future.async { f => //: (ResourceT[Future, String] => Unit)
         allCallBack(id) = f
       }
     }
@@ -48,7 +48,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       })
     }
 
-    override def acquire(): Future[ReleasableT[Future, String]] = {
+    override def acquire(): Future[ResourceT[Future, String]] = {
 
       if (allOpenedResources.contains(id)) {
         throw CanNotOpenResourceTwice()
@@ -56,7 +56,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       allOpenedResources(id) = this
 
       Future.delay {
-        new ReleasableT[Future, String] {
+        new ResourceT[Future, String] {
           override def value: String = id
 
           override def release(): Future[Unit] = {
@@ -413,7 +413,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val allCallBack = mutable.HashMap.empty[String, ReleasableT[Future, String] => Unit]
+    val allCallBack = mutable.HashMap.empty[String, ResourceT[Future, String] => Unit]
 
     val resource0: ResourceFactoryT[Future, String] =
       new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "0")
@@ -451,7 +451,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
 
     allCallBack.foreach { callBackTuple =>
       callBackTuple._2 {
-        new ReleasableT[Future, String] {
+        new ResourceT[Future, String] {
           override def value: String = callBackTuple._1
 
           override def release(): Future[Unit] = {
@@ -475,7 +475,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val allAcquireCallBack = mutable.HashMap.empty[String, ReleasableT[Future, String] => Unit]
+    val allAcquireCallBack = mutable.HashMap.empty[String, ResourceT[Future, String] => Unit]
 
     val resource0: ResourceFactoryT[Future, String] =
       new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "0")
@@ -515,7 +515,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
 
     allAcquireCallBack.foreach { callBackTuple =>
       callBackTuple._2 {
-        new ReleasableT[Future, String] {
+        new ResourceT[Future, String] {
           override def value: String = callBackTuple._1
 
           override def release(): Future[Unit] = {
