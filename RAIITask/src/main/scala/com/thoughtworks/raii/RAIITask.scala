@@ -9,16 +9,13 @@ import scalaz.{-\/, EitherT, \/, \/-}
 import scalaz.concurrent.{Future, Task}
 import scala.language.higherKinds
 
+object RAIITask extends RAIITaskFunctions
+
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-private[raii] trait RAIITaskAbstractTypes { this: RAIITask.type =>
-
+private[raii] trait RAIITaskFunctions {
   type Covariant[A] >: RAIITask[_ <: A] <: RAIITask[_ <: A]
-
-}
-
-object RAIITask extends RAIITaskAbstractTypes {
 
   /** @template */
   private[raii] type RAIIFuture[A] = ResourceFactoryT[Future, A]
