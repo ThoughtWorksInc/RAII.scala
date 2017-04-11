@@ -7,7 +7,7 @@ import scalaz.concurrent._
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-package object raii extends T {
+package object raii {
 
   /** @template */
   type ResourceFactory[A] = ResourceFactoryT[Throwable \/ ?, A]
@@ -23,12 +23,5 @@ package object raii extends T {
 
   /** @template */
   type RAIITask[A] = EitherT[RAIIFuture, Throwable, A]
-
-}
-
-trait T {
-
-  /** @template */
-  type RAIITask2[A] >: com.thoughtworks.raii.RAIITask[_ <: A] <: com.thoughtworks.raii.RAIITask[_ <: A]
 
 }

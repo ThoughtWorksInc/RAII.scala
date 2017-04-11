@@ -2,7 +2,6 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.ExecutorService
 
-import com.thoughtworks.raii.RAIITask.RAIITask
 import com.thoughtworks.raii.ResourceFactoryT.ResourceT
 
 import scala.concurrent.ExecutionContext
@@ -12,8 +11,19 @@ import scalaz.concurrent.{Future, Task}
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-object RAIITask {
-  private[raii] type RAIITask[A] = EitherT[ResourceFactoryT[Future, ?], Throwable, A]
+private[raii] trait RAIITaskAbstractTypes { this: RAIITask.type =>
+
+  type Covariant[A] >: RAIITask[_ <: A] <: RAIITask[_ <: A]
+
+}
+
+object RAIITask extends RAIITaskAbstractTypes {
+
+  /** @template */
+  private[raii] type RAIIFuture[A] = ResourceFactoryT[Future, A]
+
+  /** @template */
+  private[raii] type RAIITask[A] = EitherT[RAIIFuture, Throwable, A]
 
   def managed[A <: AutoCloseable](task: Task[A]): RAIITask[A] = {
     new RAIITask[A]({ () =>
@@ -84,7 +94,7 @@ object RAIITask {
     })
   }
 
-  def run[A](raiiTask: RAIITask[A]):Task[A] = {
+  def run[A](raiiTask: RAIITask[A]): Task[A] = {
     new Task(raiiTask.run.run)
   }
 
