@@ -2,8 +2,10 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.ExecutorService
 
+import com.thoughtworks.raii.RAIITask.RAIITask
 import com.thoughtworks.raii.ResourceFactoryT.ResourceT
 
+import scala.concurrent.ExecutionContext
 import scalaz.{-\/, EitherT, \/, \/-}
 import scalaz.concurrent.{Future, Task}
 
@@ -73,4 +75,13 @@ object RAIITask {
       }
     })
   }
+
+  def jump()(implicit executorService: ExecutionContext): RAIITask[Unit] = {
+    unmanaged(Future.async { handler: (Unit => Unit) =>
+      executorService.execute { () =>
+        handler(())
+      }
+    })
+  }
+
 }
