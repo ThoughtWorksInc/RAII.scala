@@ -7,6 +7,7 @@ import com.thoughtworks.raii.ResourceFactoryT.ResourceT
 import scala.concurrent.ExecutionContext
 import scalaz.{-\/, EitherT, \/, \/-}
 import scalaz.concurrent.{Future, Task}
+import scala.language.higherKinds
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
