@@ -100,6 +100,15 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     def release(): F[Unit]
   }
 
+  object ResourceT {
+    @inline
+    def unmanaged[F[_]: Applicative, A](a: => A): ResourceT[F, A] = new ResourceT[F, A] {
+      override val value: A = a
+
+      override def release(): F[Unit] = Applicative[F].point(())
+    }
+  }
+
   // implicit conversion of SAM type for Scala 2.10 and 2.11
   implicit final class FunctionResourceFactoryT[F[_], A](val underlying: () => F[ResourceT[F, A]])
       extends AnyVal
@@ -111,11 +120,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     private[raii] implicit def typeClass: Applicative[F]
 
     override def point[A](a: => A): ResourceFactoryT[F, A] = { () =>
-      Applicative[F].point(new ResourceT[F, A] {
-        override val value: A = a
-
-        override def release(): F[Unit] = Applicative[F].point(())
-      })
+      Applicative[F].point(ResourceT.unmanaged(a))
     }
   }
 
@@ -241,13 +246,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
   implicit val resourceFactoryTMonadTrans = new MonadTrans[ResourceFactoryT] {
 
     override def liftM[F[_]: Monad, A](fa: F[A]): ResourceFactoryT[F, A] = { () =>
-      fa.map { a =>
-        new ResourceT[F, A] {
-          override val value: A = a
-
-          override def release(): F[Unit] = Applicative[F].point(())
-        }
-      }
+      fa.map(ResourceT.unmanaged(_))
     }
 
     override def apply[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = resourceFactoryTMonad
