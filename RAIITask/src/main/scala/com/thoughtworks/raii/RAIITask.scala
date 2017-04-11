@@ -84,4 +84,8 @@ object RAIITask {
     })
   }
 
+  def run[A](raiiTask: RAIITask[A]):Task[A] = {
+    new Task(raiiTask.run.run)
+  }
+
 }
