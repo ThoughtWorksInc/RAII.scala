@@ -90,6 +90,13 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
   trait ResourceT[F[_], +A] {
     def value: A
 
+    /** Releases all the native resources [[ResourceFactoryT.acquire]]d during creating this [[ResourceT]].
+      *
+      * @note After [[release]], [[value]] should not be used if:
+      *  - [[value]] is a managed native resource,
+      *    e.g. a [[com.thoughtworks.raii.sde.raii#managed managed]] `AutoCloseable`,
+      *  - or, [[value]] internally uses some managed native resources.
+      */
     def release(): F[Unit]
   }
 
