@@ -41,3 +41,5 @@ lazy val unidoc = project
   )
 
 organization in ThisBuild := "com.thoughtworks.raii"
+
+publishArtifact := false
