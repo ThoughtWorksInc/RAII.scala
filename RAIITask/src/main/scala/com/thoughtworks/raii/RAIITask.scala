@@ -67,12 +67,8 @@ private[raii] trait RAIITaskFunctions {
     unmanaged(new Task(future.map(\/-(_))))
   }
 
-  def unmanaged[A](a: => A): RAIITask[A] = {
-    unmanaged(Task.delay(a))
-  }
-
   def delay[A](a: => A): RAIITask[A] = {
-    unmanaged(a)
+    unmanaged(Task.delay(a))
   }
 
   def now[A](a: A): RAIITask[A] = {
