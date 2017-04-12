@@ -9,12 +9,14 @@ import scalaz.{-\/, EitherT, \/, \/-}
 import scalaz.concurrent.{Future, Task}
 import scala.language.higherKinds
 
-object RAIITask extends RAIITaskFunctions
-
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
+object RAIITask extends RAIITaskFunctions
+
+// RAIITaskFunctions is a workaround for naming clash in Scala 2.11
 private[raii] trait RAIITaskFunctions {
+
   type Covariant[A] >: RAIITask[_ <: A] <: RAIITask[_ <: A]
 
   /** @template */
