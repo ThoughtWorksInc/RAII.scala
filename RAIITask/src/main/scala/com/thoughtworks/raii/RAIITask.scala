@@ -14,7 +14,9 @@ import scala.language.higherKinds
   */
 object RAIITask extends RAIITaskFunctions
 
-// RAIITaskFunctions is a workaround for naming clash in Scala 2.11
+
+// RAIITaskFunctions is a workaround for type alias `Covariant`,
+// because the abstract type cannot defined in object.
 private[raii] trait RAIITaskFunctions {
 
   type Covariant[A] >: RAIITask[_ <: A] <: RAIITask[_ <: A]
