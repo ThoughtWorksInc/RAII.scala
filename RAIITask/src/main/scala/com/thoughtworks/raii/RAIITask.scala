@@ -14,7 +14,6 @@ import scala.language.higherKinds
   */
 object RAIITask extends RAIITaskFunctions
 
-
 // RAIITaskFunctions is a workaround for type alias `Covariant`,
 // because the abstract type cannot defined in object.
 private[raii] trait RAIITaskFunctions {
@@ -74,6 +73,10 @@ private[raii] trait RAIITaskFunctions {
 
   def delay[A](a: => A): RAIITask[A] = {
     unmanaged(a)
+  }
+
+  def now[A](a: A): RAIITask[A] = {
+    unmanaged(Task.now(a))
   }
 
   /** Create a [[RAIITask]] that will evaluate `a` using the given `ExecutorService`. */
