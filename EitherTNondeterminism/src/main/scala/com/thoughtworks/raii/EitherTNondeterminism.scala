@@ -7,6 +7,10 @@ import scalaz.syntax.all._
 
 object EitherTNondeterminism {
 
+  implicit def throwableSemigroup = new Semigroup[Throwable] {
+    override def append(f1: Throwable, f2: => Throwable): Throwable = f1
+  }
+
   implicit def eitherTParallelApplicative[F[_], L](
       implicit F0: Applicative[Lambda[R => F[R] @@ Parallel]],
       semigroup: Semigroup[L]): Applicative[Lambda[R => EitherT[F, L, R] @@ Parallel]] =
