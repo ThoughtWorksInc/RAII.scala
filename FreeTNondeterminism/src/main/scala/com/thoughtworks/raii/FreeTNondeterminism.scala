@@ -1,44 +1,52 @@
 package com.thoughtworks.raii
 
 import scala.language.higherKinds
-import scalaz.{Apply, FreeT, Monoid, Nondeterminism, Reducer, \/}
+import scalaz.Tags.Parallel
+import scalaz._
 
 object FreeTNondeterminism {
-  implicit def freeTNondeterminism[S[_], F[_]](implicit F0: Nondeterminism[F]): Nondeterminism[FreeT[S, F, ?]] =
-    new FreeTNondeterminism[S, F] {
-      val F = Nondeterminism[F]
+
+  implicit def freeTParallelApplicative[S[_]: Functor, F[_]: BindRec: Applicative](
+      implicit parallelApplicativeF: Applicative[Lambda[X => F[X] @@ Parallel]]
+  ): Applicative[Lambda[X => FreeT[S, F, X] @@ Parallel]] =
+    new Applicative[Lambda[X => FreeT[S, F, X] @@ Parallel]] {
+      override def point[A](a: => A): FreeT[S, F, A] @@ Parallel = {
+        Parallel(FreeT.suspend(Parallel.unwrap(parallelApplicativeF.point(\/.left[A, S[FreeT[S, F, A]]](a)))))
+      }
+
+      override def ap[A, B](fa: => FreeT[S, F, A] @@ Parallel)(
+          ff: => FreeT[S, F, A => B] @@ Parallel): FreeT[S, F, B] @@ Parallel = {
+        type T[X] = FreeT[S, F, X]
+        type Continue = (T[A], T[A => B])
+        val ftb: F[T[B]] = BindRec[F].tailrecM[Continue, T[B]] {
+          case (ta: T[A], tf: T[A => B]) =>
+            val tail: F[Continue \/ T[B]] @@ Parallel =
+              parallelApplicativeF.apply2(Parallel(ta.resume), Parallel(tf.resume)) { (stepA, stepF) =>
+                stepA match {
+                  case -\/(a) =>
+                    stepF match {
+                      case -\/(f) =>
+                        \/-(FreeT.point(f(a)))
+                      case suspendF @ \/-(_) =>
+                        @inline def nextTF: T[A => B] = FreeT.suspend(Applicative[F].point(suspendF))
+                        \/-(nextTF.map(_(a))(Functor[S], Applicative[F]))
+                    }
+                  case suspendA @ \/-(_) =>
+                    @inline def nextTA: T[A] = FreeT.suspend(Applicative[F].point(suspendA))
+                    stepF match {
+                      case -\/(f) =>
+                        \/-(nextTA.map(f)(Functor[S], Applicative[F]))
+                      case suspendF @ \/-(_) =>
+                        @inline def nextTF: T[A => B] = FreeT.suspend(Applicative[F].point(suspendF))
+                        -\/((nextTA, nextTF))
+                    }
+                }
+              }
+            Parallel.unwrap(tail)
+        }((Parallel.unwrap(fa), Parallel.unwrap(ff)))
+
+        Parallel(FreeT.freeTMonad[S, F].join(FreeT.liftM(ftb)(BindRec[F])))
+      }
+
     }
-}
-
-private[raii] trait FreeTNondeterminism[S[_], F[_]] extends Nondeterminism[FreeT[S, F, ?]] {
-  implicit protected def F: Nondeterminism[F]
-//
-//  override def chooseAny[A](head: FreeT[F, L, A], tail: Seq[FreeT[F, L, A]]): FreeT[F, L, (A, Seq[FreeT[F, L, A]])] =
-//    new FreeT(F.map(F.chooseAny(head.run, tail map (_.run))) {
-//      case (a, residuals) =>
-//        a.map((_, residuals.map(new FreeT(_))))
-//    })
-//
-//  override def bind[A, B](fa: FreeT[F, L, A])(f: (A) => FreeT[F, L, B]): FreeT[F, L, B] =
-//    fa flatMap f
-//
-//  override def point[A](a: => A): FreeT[F, L, A] = FreeT.freeTMonad[F, L].point(a)
-//
-//  override def reduceUnordered[A, M](fs: Seq[FreeT[F, L, A]])(implicit R: Reducer[A, M]): FreeT[F, L, M] = {
-//    import R.monoid
-//    val AE = Apply[L \/ ?]
-//    val RR: Reducer[L \/ A, L \/ M] =
-//      Reducer[L \/ A, L \/ M](
-//        _.map(R.unit),
-//        c => AE.apply2(c, _)(R.cons(_, _)),
-//        m => AE.apply2(m, _)(R.snoc(_, _))
-//      )(Monoid.liftMonoid[L \/ ?, M])
-//    new FreeT(F.reduceUnordered(fs.map(_.run))(RR))
-//  }
-  override def chooseAny[A](head: FreeT[S, F, A], tail: Seq[FreeT[S, F, A]]): FreeT[S, F, (A, Seq[FreeT[S, F, A]])] =
-    ???
-
-  override def point[A](a: => A): FreeT[S, F, A] = ???
-
-  override def bind[A, B](fa: FreeT[S, F, A])(f: (A) => FreeT[S, F, B]): FreeT[S, F, B] = ???
 }
