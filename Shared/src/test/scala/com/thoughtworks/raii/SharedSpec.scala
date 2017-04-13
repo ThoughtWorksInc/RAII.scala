@@ -8,16 +8,20 @@ import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
 
 import scala.collection.mutable
 import scala.concurrent.Promise
+import scalaz.Tags.Parallel
 import scalaz.concurrent.{Future, Task}
 import scalaz.syntax.all._
 import scalaz.{-\/, EitherT, \/, _}
+import Future._
 
 /**
   * Created by 张志豪 on 2017/4/6.
   */
 class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
 
-  type PowerFuture[A] = EitherT[ResourceFactoryT[Future, ?], Throwable, A]
+  type RAIIFuture[A] = ResourceFactoryT[Future, A]
+
+  type RAIITask[A] = EitherT[RAIIFuture, Throwable, A]
 
   class FutureAsyncFakeResource(allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource],
                                 allCallBack: mutable.HashMap[String, ResourceT[Future, String] => Unit],
@@ -240,11 +244,11 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val sharedResource: ResourceFactoryT[Future, String] =
       new FutureDelayFakeResource(allOpenedResources, "0").shared
 
-    val pf: PowerFuture[String] = EitherT[ResourceFactoryT[Future, ?], Throwable, String](sharedResource.map(\/.right))
+    val pf: RAIITask[String] = EitherT[ResourceFactoryT[Future, ?], Throwable, String](sharedResource.map(\/.right))
 
     import com.thoughtworks.raii.EitherTNondeterminism._
 
-    val result: PowerFuture[String] =
+    val result: RAIITask[String] =
       eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](Nondeterminism[ResourceFactoryT[Future, ?]])
         .map(pf) { a =>
           events += "using a"
@@ -306,14 +310,14 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val sharedResource: ResourceFactoryT[Future, String] =
       new FutureDelayFakeResource(allOpenedResources, "0").shared
 
-    val pf1: PowerFuture[String] =
+    val pf1: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](sharedResource.map(\/.right))
-    val pf2: PowerFuture[String] =
+    val pf2: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](sharedResource.map(\/.right))
 
     import com.thoughtworks.raii.EitherTNondeterminism._
 
-    val result: PowerFuture[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
+    val result: RAIITask[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
       Nondeterminism[ResourceFactoryT[Future, ?]]).mapBoth(pf1, pf2) { (a: String, b: String) =>
       events += "using a & b"
       a + b
@@ -342,18 +346,24 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val sharedResource: ResourceFactoryT[Future, String] =
       new FutureDelayFakeResource(allOpenedResources, "0").shared
 
-    val pf1: PowerFuture[String] =
+    val pf1: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](sharedResource.map(\/.right))
-    val pf2: PowerFuture[String] =
+    val pf2: RAIITask[String] =
       EitherT.eitherTMonadError[ResourceFactoryT[Future, ?], Throwable].raiseError[String](new Boom)
 
     import com.thoughtworks.raii.EitherTNondeterminism._
+    import com.thoughtworks.raii.ResourceFactoryT.resourceFactoryTParallelApplicative
 
-    val result: PowerFuture[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
-      Nondeterminism[ResourceFactoryT[Future, ?]]).mapBoth(pf1, pf2) { (a: String, b: String) =>
-      events += "using a & b"
-      a + b
+    implicit def throwableSemigroup = new Semigroup[Throwable] {
+      override def append(f1: Throwable, f2: => Throwable): Throwable = f1
     }
+
+    val result: RAIITask[String] = Parallel.unwrap[RAIITask[String]](
+      Applicative[Lambda[x => RAIITask[x] @@ Parallel]]
+        .apply2(Parallel(pf1), Parallel(pf2)) { (a: String, b: String) =>
+          events += "using a & b"
+          a + b
+        })
 
     val future: Future[Throwable \/ String] = result.run.run
 
@@ -378,16 +388,16 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val resource0: ResourceFactoryT[Future, String] = new FutureDelayFakeResource(allOpenedResources, "0")
     val resource1: ResourceFactoryT[Future, String] = new FutureDelayFakeResource(allOpenedResources, "1").shared
 
-    val pf0: PowerFuture[String] =
+    val pf0: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource0.map(\/.right))
-    val pf1: PowerFuture[String] =
+    val pf1: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-    val pf2: PowerFuture[String] =
+    val pf2: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
 
     import com.thoughtworks.raii.EitherTNondeterminism._
 
-    val result: PowerFuture[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
+    val result: RAIITask[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
       Nondeterminism[ResourceFactoryT[Future, ?]]).nmap3(pf0, pf1, pf2) { (a: String, b: String, c: String) =>
       events += "using a & b & c"
       a + b + c
@@ -420,16 +430,16 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val resource1: ResourceFactoryT[Future, String] =
       new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "1").shared
 
-    val pf0: PowerFuture[String] =
+    val pf0: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource0.map(\/.right))
-    val pf1: PowerFuture[String] =
+    val pf1: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-    val pf2: PowerFuture[String] =
+    val pf2: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
 
     import com.thoughtworks.raii.EitherTNondeterminism._
 
-    val result: PowerFuture[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
+    val result: RAIITask[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
       Nondeterminism[ResourceFactoryT[Future, ?]]).nmap3(pf0, pf1, pf2) { (a: String, b: String, c: String) =>
       events += "using a & b & c"
       a + b + c
@@ -482,16 +492,16 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val resource1: ResourceFactoryT[Future, String] =
       new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "1").shared
 
-    val pf0: PowerFuture[String] =
+    val pf0: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource0.map(\/.right))
-    val pf1: PowerFuture[String] =
+    val pf1: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-    val pf2: PowerFuture[String] =
+    val pf2: RAIITask[String] =
       EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
 
     import com.thoughtworks.raii.EitherTNondeterminism._
 
-    val result: PowerFuture[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
+    val result: RAIITask[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
       Nondeterminism[ResourceFactoryT[Future, ?]]).nmap3(pf0, pf1, pf2) { (a: String, b: String, c: String) =>
       events += "using a & b & c"
       a + b + c

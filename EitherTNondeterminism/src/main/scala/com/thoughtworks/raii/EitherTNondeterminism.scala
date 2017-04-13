@@ -7,7 +7,7 @@ import scalaz.syntax.all._
 
 object EitherTNondeterminism {
 
-  implicit def eitherTParallelApplictive[F[_], L](
+  implicit def eitherTParallelApplicative[F[_], L](
       implicit F0: Applicative[Lambda[R => F[R] @@ Parallel]],
       semigroup: Semigroup[L]): Applicative[Lambda[R => EitherT[F, L, R] @@ Parallel]] =
     new Applicative[Lambda[R => EitherT[F, L, R] @@ Parallel]] {

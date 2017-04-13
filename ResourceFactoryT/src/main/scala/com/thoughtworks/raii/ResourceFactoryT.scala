@@ -7,7 +7,9 @@ import scala.collection.immutable.Queue
 import scala.language.higherKinds
 import scalaz.Free.Trampoline
 import scalaz.Leibniz.===
-import scalaz._, Id.Id
+import scalaz._
+import Id.Id
+import scalaz.Tags.Parallel
 import scalaz.std.iterable._
 import scalaz.syntax.all._
 
@@ -141,6 +143,48 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
             }
           }
         }
+    }
+  }
+
+  implicit def resourceFactoryTParallelApplicative[F[_]](
+      implicit F0: Applicative[Lambda[R => F[R] @@ Parallel]]
+  ): Applicative[Lambda[R => ResourceFactoryT[F, R] @@ Parallel]] = {
+    new Applicative[Lambda[R => ResourceFactoryT[F, R] @@ Parallel]] {
+      override def point[A](a: => A): ResourceFactoryT[F, A] @@ Parallel = {
+        Parallel({ () =>
+          val fa: F[ResourceT[F, A]] = Parallel.unwrap[F[ResourceT[F, A]]](
+            F0.point(
+              new ResourceT[F, A] {
+                override def value: A = a
+                override def release(): F[Unit] = Parallel.unwrap(F0.point(()))
+              }
+            ))
+          fa
+        }: ResourceFactoryT[F, A])
+      }
+
+      override def ap[A, B](fa: => ResourceFactoryT[F, A] @@ Parallel)(
+          f: => ResourceFactoryT[F, A => B] @@ Parallel): ResourceFactoryT[F, B] @@ Parallel = {
+        Parallel { () =>
+          Parallel.unwrap[F[ResourceT[F, B]]](
+            F0.apply2(
+              Parallel(Parallel.unwrap(fa).acquire()),
+              Parallel(Parallel.unwrap(f).acquire())
+            ) { (resourceA, resourceF) =>
+              new ResourceT[F, B] {
+                override val value: B = resourceF.value(resourceA.value)
+
+                override def release(): F[Unit] = {
+                  Parallel.unwrap[F[Unit]](F0.apply2(Parallel(resourceA.release()), Parallel(resourceF.release())) {
+                    (_: Unit, _: Unit) =>
+                      ()
+                  })
+                }
+              }
+            }
+          )
+        }
+      }
     }
   }
 
