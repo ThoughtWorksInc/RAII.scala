@@ -354,6 +354,10 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     import com.thoughtworks.raii.EitherTNondeterminism._
     import com.thoughtworks.raii.ResourceFactoryT.resourceFactoryTParallelApplicative
 
+    implicit def throwableSemigroup = new Semigroup[Throwable] {
+      override def append(f1: Throwable, f2: => Throwable): Throwable = f1
+    }
+
     val result: RAIITask[String] = Parallel.unwrap[RAIITask[String]](
       Applicative[Lambda[x => RAIITask[x] @@ Parallel]]
         .apply2(Parallel(pf1), Parallel(pf2)) { (a: String, b: String) =>
