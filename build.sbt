@@ -24,11 +24,11 @@ lazy val EitherTNondeterminismJVM = EitherTNondeterminism.jvm.addSbtFiles(file("
 
 lazy val EitherTNondeterminismJS = EitherTNondeterminism.js.addSbtFiles(file("../build.sbt.shared"))
 
-lazy val FreeTNondeterminism = crossProject.crossType(CrossType.Pure)
+lazy val FreeTParallelApplicative = crossProject.crossType(CrossType.Pure)
 
-lazy val FreeTNondeterminismJVM = FreeTNondeterminism.jvm.addSbtFiles(file("../build.sbt.shared"))
+lazy val FreeTParallelApplicativeJVM = FreeTParallelApplicative.jvm.addSbtFiles(file("../build.sbt.shared"))
 
-lazy val FreeTNondeterminismJS = FreeTNondeterminism.js.addSbtFiles(file("../build.sbt.shared"))
+lazy val FreeTParallelApplicativeJS = FreeTParallelApplicative.js.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val `package` = crossProject.crossType(CrossType.Pure).dependsOn(ResourceFactoryT)
 
