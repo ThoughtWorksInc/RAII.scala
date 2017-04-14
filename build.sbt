@@ -30,6 +30,12 @@ lazy val FreeTParallelApplicativeJVM = FreeTParallelApplicative.jvm.addSbtFiles(
 
 lazy val FreeTParallelApplicativeJS = FreeTParallelApplicative.js.addSbtFiles(file("../build.sbt.shared"))
 
+lazy val KleisliParallelApplicative = crossProject.crossType(CrossType.Pure)
+
+lazy val KleisliParallelApplicativeJVM = KleisliParallelApplicative.jvm.addSbtFiles(file("../build.sbt.shared"))
+
+lazy val KleisliParallelApplicativeJS = KleisliParallelApplicative.js.addSbtFiles(file("../build.sbt.shared"))
+
 lazy val `package` = crossProject.crossType(CrossType.Pure).dependsOn(ResourceFactoryT)
 
 lazy val packageJVM = `package`.jvm.addSbtFiles(file("../build.sbt.shared"))
