@@ -1,5 +1,11 @@
 crossScalaVersions := Seq("2.11.8", "2.12.1")
 
+lazy val CovariantT = crossProject.crossType(CrossType.Pure)
+
+lazy val CovariantTJVM = CovariantT.jvm.addSbtFiles(file("../build.sbt.shared"))
+
+lazy val CovariantTJS = CovariantT.js.addSbtFiles(file("../build.sbt.shared"))
+
 lazy val ResourceFactoryT = crossProject.crossType(CrossType.Pure)
 
 lazy val ResourceFactoryTJVM = ResourceFactoryT.jvm.addSbtFiles(file("../build.sbt.shared"))
