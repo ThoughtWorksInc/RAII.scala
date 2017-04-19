@@ -1,16 +1,8 @@
 package com.thoughtworks.raii
 
-import java.util.concurrent.atomic.AtomicReference
-
-import scala.annotation.tailrec
-import scala.collection.immutable.Queue
 import scala.language.higherKinds
-import scalaz.Free.Trampoline
-import scalaz.Leibniz.===
-import scalaz._
-import Id.Id
 import scalaz.Tags.Parallel
-import scalaz.std.iterable._
+import scalaz._
 import scalaz.syntax.all._
 
 trait ResourceFactoryT[F[_], A] extends Any {
