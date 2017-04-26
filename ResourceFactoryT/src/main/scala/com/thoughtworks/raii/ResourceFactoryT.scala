@@ -117,7 +117,18 @@ object transformers {
     }
   }
 
-  private[raii] sealed abstract class ResourceFactoryTInstances3 {
+  private[raii] sealed abstract class ResourceFactoryTInstances4 {
+    implicit def resourceFactoryTBindRec[F[_]](implicit F0: Monad[F],
+                                               B0: BindRec[F]): BindRec[ResourceFactoryT[F, ?]] = {
+      new ResourceFactoryTBindRec[F] {
+        private[raii] implicit override def typeClass = F0
+
+        override private[raii] implicit def B = B0
+      }
+    }
+  }
+
+  private[raii] sealed abstract class ResourceFactoryTInstances3 extends ResourceFactoryTInstances4 {
 
     implicit def resourceFactoryTApplicative[F[_]: Applicative]: Applicative[ResourceFactoryT[F, ?]] =
       new ResourceFactoryTApplicative[F] {
@@ -227,6 +238,30 @@ object transformers {
   }
 
   private[raii] trait ResourceFactoryTMonad[F[_]]
+    extends ResourceFactoryTFunctor[F]
+      with Bind[ResourceFactoryT[F, ?]] {
+    private[raii] implicit override def typeClass: Bind[F]
+
+    override def bind[A, B](fa: ResourceFactoryT[F, A])(f: (A) => ResourceFactoryT[F, B]): ResourceFactoryT[F, B] = {
+      ResourceFactoryTExtractor.apply(
+        for {
+          releasableA <- unwrap(fa)
+          releasableB <- unwrap(f(releasableA.value))
+        } yield {
+          new ResourceT[F, B] {
+            override def value: B = releasableB.value
+
+            override def release(): F[Unit] = {
+              releasableB.release() >> releasableA.release()
+            }
+          }
+        }
+      )
+    }
+
+  }
+
+  private[raii] trait ResourceFactoryTMonad[F[_]]
       extends ResourceFactoryTApplicative[F]
       with Monad[ResourceFactoryT[F, ?]] {
     private[raii] implicit override def typeClass: Monad[F]
@@ -329,24 +364,25 @@ object transformers {
   private[raii] trait ResourceFactoryTBindRec[F[_]]
       extends BindRec[ResourceFactoryT[F, ?]]
       with ResourceFactoryTMonad[F] {
-    private[raii] implicit override def typeClass: Monad[F]
-    private[raii] implicit def B: BindRec[F]
+    private[raii] implicit override def typeClass: BindRec[F]
 
     override def tailrecM[A, B](f: A => ResourceFactoryT[F, A \/ B])(a: A): ResourceFactoryT[F, B] = {
-      //F[ResourceT[F,B]]
-      //def tailrecM[A, B](f: A => F[A \/ B])(a: A): F[B]
-      B.tailrecM[A, ResourceT[F, B]] { a: A =>
-        typeClass.map(ResourceFactoryT.unwrap(f(a))) { resource: ResourceT[F, A \/ B] =>
-          val aaa: A \/ ResourceT[F, B] = resource.value match {
-            case -\/(aa) => ??? //aa \/
-            case \/-(bb) => ???
-          }
-
-          aaa
+      val tailRecResult = B.tailrecM[A, ResourceT[F, B]] { a: A =>
+        B.map(ResourceFactoryT.unwrap(f(a))) { resource: ResourceT[F, A \/ B] =>
+          val mapResult: A \/ ResourceT[F, B] =
+            resource.value match {
+              case -\/(aa) => -\/(aa)
+              case \/-(bb) =>
+                \/-(new ResourceT[F, B] {
+                  override def value: B = bb
+                  override def release(): F[Unit] = resource.release()
+                })
+            }
+          mapResult
         }
       }(a): F[ResourceT[F, B]]
 
-      ???
+      ResourceFactoryT(tailRecResult)
     }
   }
 }
