@@ -1,8 +1,10 @@
 package com.thoughtworks.raii.sde
 
-import com.thoughtworks.raii.{ResourceFactory, ResourceFactoryT}
+import com.thoughtworks.raii.ResourceFactory
+import com.thoughtworks.raii.transformers.ResourceFactoryT
 import com.thoughtworks.sde.core.MonadicFactory
 import macrocompat.bundle
+
 import scala.language.higherKinds
 import scala.reflect.macros.whitebox
 import scala.language.experimental.macros
@@ -36,34 +38,37 @@ object raii {
   }
 
   def reduce[A](resourceFactory: ResourceFactory[A]): A = {
-    resourceFactory.run match {
+    ResourceFactoryT.run[Throwable \/ ?, A](resourceFactory) match {
       case \/-(a) => a
       case -\/(e) => throw e
     }
   }
 
+  //TODO:
   def managed[A <: AutoCloseable](autoCloseable: => A): ResourceFactory[A] = {
-    new ResourceFactory[A] {
-      override def acquire(): Throwable \/ ResourceFactoryT.ResourceT[Throwable \/ ?, A] = {
-        try {
-          \/-(new ResourceFactoryT.ResourceT[Throwable \/ ?, A] {
-            override val value = autoCloseable
+     ??? :ResourceFactory[A]
 
-            override def release() = {
-              try {
-                \/-(value.close())
-              } catch {
-                case NonFatal(e) =>
-                  -\/(e)
-              }
-            }
-          })
-        } catch {
-          case NonFatal(e) =>
-            -\/(e)
-        }
-      }
-    }
+//    new ResourceFactory[A] {
+//      override def acquire(): Throwable \/ ResourceT[Throwable \/ ?, A] = {
+//        try {
+//          \/-(new ResourceT[Throwable \/ ?, A] {
+//            override val value = autoCloseable
+//
+//            override def release() = {
+//              try {
+//                \/-(value.close())
+//              } catch {
+//                case NonFatal(e) =>
+//                  -\/(e)
+//              }
+//            }
+//          })
+//        } catch {
+//          case NonFatal(e) =>
+//            -\/(e)
+//        }
+//      }
+//    }
   }
 
   def using[A <: AutoCloseable](autoCloseable: => A): A = macro Macros.using[A]

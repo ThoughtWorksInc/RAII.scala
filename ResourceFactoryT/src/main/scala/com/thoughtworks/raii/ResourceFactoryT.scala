@@ -1,90 +1,29 @@
 package com.thoughtworks.raii
 
+import com.thoughtworks.raii.transformers.ResourceFactoryT
+
 import scala.language.higherKinds
 import scalaz.Tags.Parallel
-import scalaz._
+import scalaz.{\/, _}
 import scalaz.syntax.all._
 
-trait ResourceFactoryT[F[_], A] extends Any {
+object transformers {
 
-  import ResourceFactoryT._
+  private[transformers] val ResourceFactoryTExtractor: ResourceFactoryTExtractor = new ResourceFactoryTExtractor {
+    override type ResourceFactoryT[F[_], A] = F[ResourceT[F, A]]
 
-  def acquire(): F[ResourceT[F, A]]
+    override def apply[F[_], A](run: F[ResourceT[F, A]]): ResourceFactoryT[F, A] = run
 
-  private[raii] final def using[B](f: A => F[B])(implicit monad: Bind[F]): F[B] = {
-    acquire().flatMap { fa =>
-      f(fa.value).flatMap { a: B =>
-        fa.release().map { _ =>
-          a
-        }
-      }
-    }
+    override private[raii] def unwrap[F[_], A](resourceFactoryT: ResourceFactoryT[F, A]): F[ResourceT[F, A]] =
+      resourceFactoryT
   }
 
-  final def run(implicit monad: Bind[F]): F[A] = {
-    acquire().flatMap { fa =>
-      fa.release().map { _ =>
-        fa.value
-      }
-    }
-  }
-
-  private[raii] final def foreach(f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
-    this
-      .acquire()
-      .flatMap { fa =>
-        f(fa.value)
-        fa.release()
-      }
-      .sequence_[Id.Id, Unit]
-  }
-
-}
-
-private[raii] trait LowPriorityResourceFactoryTInstances3 { this: ResourceFactoryT.type =>
-
-  implicit def resourceFactoryTApplicative[F[_]: Applicative]: Applicative[ResourceFactoryT[F, ?]] =
-    new ResourceFactoryTApplicative[F] {
-      override private[raii] def typeClass = implicitly
-    }
-
-}
-
-private[raii] trait LowPriorityResourceFactoryTInstances2 extends LowPriorityResourceFactoryTInstances3 {
-  this: ResourceFactoryT.type =>
-
-  implicit def resourceFactoryTMonad[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = new ResourceFactoryTMonad[F] {
-    private[raii] override def typeClass = implicitly
-  }
-
-}
-
-private[raii] trait LowPriorityResourceFactoryTInstances1 extends LowPriorityResourceFactoryTInstances2 {
-  this: ResourceFactoryT.type =>
-
-  implicit def resourceFactoryTNondeterminism[F[_]](
-      implicit F0: Nondeterminism[F]): Nondeterminism[ResourceFactoryT[F, ?]] =
-    new ResourceFactoryTNondeterminism[F] {
-      private[raii] override def typeClass = implicitly
-    }
-}
-
-private[raii] trait LowPriorityResourceFactoryTInstances0 extends LowPriorityResourceFactoryTInstances1 {
-  this: ResourceFactoryT.type =>
-
-  implicit def resourceFactoryTMonadError[F[_], S](
-      implicit F0: MonadError[F, S]): MonadError[ResourceFactoryT[F, ?], S] =
-    new ResourceFactoryTMonadError[F, S] {
-      private[raii] override def typeClass = implicitly
-    }
-}
-
-object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
+  type ResourceFactoryT[F[_], A] = ResourceFactoryTExtractor.ResourceFactoryT[F, A]
 
   trait ResourceT[F[_], +A] {
     def value: A
 
-    /** Releases all the native resources [[ResourceFactoryT.acquire]]d during creating this [[ResourceT]].
+    /** Releases all the native resources [[ResourceFactoryT.unwrap]]d during creating this [[ResourceT]].
       *
       * @note After [[release]], [[value]] should not be used if:
       *  - [[value]] is a managed native resource,
@@ -103,28 +42,130 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     }
   }
 
-  // implicit conversion of SAM type for Scala 2.10 and 2.11
-  implicit final class FunctionResourceFactoryT[F[_], A](val underlying: () => F[ResourceT[F, A]])
-      extends AnyVal
-      with ResourceFactoryT[F, A] {
-    override def acquire(): F[ResourceT[F, A]] = underlying()
+  private[raii] trait ResourceFactoryTExtractor {
+    type ResourceFactoryT[F[_], A]
+
+    def apply[F[_], A](run: F[ResourceT[F, A]]): ResourceFactoryT[F, A]
+
+    private[raii] def unwrap[F[_], A](resourceFactoryT: ResourceFactoryT[F, A]): F[ResourceT[F, A]]
+
+    final def unapply[F[_], A](resourceFactoryT: ResourceFactoryT[F, A]): Some[F[ResourceT[F, A]]] =
+      Some(unwrap(resourceFactoryT))
+  }
+
+  object ResourceFactoryT extends ResourceFactoryTInstances0 {
+
+    def apply[F[_], A](run: F[ResourceT[F, A]]): ResourceFactoryT[F, A] = ResourceFactoryTExtractor.apply(run)
+
+    private[raii] def unwrap[F[_], A](resourceFactoryT: ResourceFactoryT[F, A]): F[ResourceT[F, A]] =
+      ResourceFactoryTExtractor.unwrap(resourceFactoryT)
+
+    def unapply[F[_], A](resourceFactoryT: ResourceFactoryT[F, A]): Some[F[ResourceT[F, A]]] =
+      ResourceFactoryTExtractor.unapply(resourceFactoryT)
+
+    private[raii] final def using[F[_], A, B](resourceFactoryT: ResourceFactoryT[F, A], f: A => F[B])(
+        implicit monad: Bind[F]): F[B] = {
+      unwrap(resourceFactoryT).flatMap { fa =>
+        f(fa.value).flatMap { a: B =>
+          fa.release().map { _ =>
+            a
+          }
+        }
+      }
+    }
+
+    /**
+      * Return a [Future] which contains content of [ResourceT] and [ResourceT] will be closed,
+      * NOTE: the content of [ResourceT] must be JVM resource cause the content will not be closed.
+      */
+    final def run[F[_], A](resourceFactoryT: ResourceFactoryT[F, A])(implicit monad: Bind[F]): F[A] = {
+      unwrap(resourceFactoryT).flatMap { resource: ResourceT[F, A] =>
+        resource.release().map { _ =>
+          resource.value
+        }
+      }
+    }
+
+    private[raii] final def foreach[F[_], A](resourceFactoryT: ResourceFactoryT[F, A],
+                                             f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
+      unwrap(resourceFactoryT)
+        .flatMap { fa =>
+          f(fa.value)
+          fa.release()
+        }
+        .sequence_[Id.Id, Unit]
+    }
+
+    private[raii] def catchError[F[_]: MonadError[?[_], S], S, A](fa: F[A]): F[S \/ A] = {
+      fa.map(_.right[S]).handleError(_.left[A].point[F])
+    }
+
+    implicit val resourceFactoryTMonadTrans = new MonadTrans[ResourceFactoryT] {
+
+      override def liftM[F[_]: Monad, A](fa: F[A]): ResourceFactoryT[F, A] =
+        ResourceFactoryTExtractor.apply(fa.map(ResourceT.unmanaged(_)))
+
+      override def apply[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = resourceFactoryTMonad
+    }
+
+    implicit def resourceFactoryTParallelApplicative[F[_]](
+        implicit F0: Applicative[Lambda[R => F[R] @@ Parallel]]
+    ): Applicative[Lambda[R => ResourceFactoryT[F, R] @@ Parallel]] = {
+      new ResourceFactoryTParallelApplicative[F] {
+        override private[raii] implicit def typeClass = F0
+      }
+    }
+  }
+
+  private[raii] sealed abstract class ResourceFactoryTInstances3 {
+
+    implicit def resourceFactoryTApplicative[F[_]: Applicative]: Applicative[ResourceFactoryT[F, ?]] =
+      new ResourceFactoryTApplicative[F] {
+        override private[raii] def typeClass = implicitly
+      }
+  }
+
+  private[raii] sealed abstract class ResourceFactoryTInstances2 extends ResourceFactoryTInstances3 {
+
+    implicit def resourceFactoryTMonad[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = new ResourceFactoryTMonad[F] {
+      private[raii] override def typeClass = implicitly
+    }
+  }
+
+  private[raii] sealed abstract class ResourceFactoryTInstances1 extends ResourceFactoryTInstances2 {
+
+    implicit def resourceFactoryTNondeterminism[F[_]](
+        implicit F0: Nondeterminism[F]): Nondeterminism[ResourceFactoryT[F, ?]] =
+      new ResourceFactoryTNondeterminism[F] {
+        private[raii] override def typeClass = implicitly
+      }
+  }
+
+  private[raii] sealed abstract class ResourceFactoryTInstances0 extends ResourceFactoryTInstances1 {
+
+    implicit def resourceFactoryTMonadError[F[_], S](
+        implicit F0: MonadError[F, S]): MonadError[ResourceFactoryT[F, ?], S] =
+      new ResourceFactoryTMonadError[F, S] {
+        private[raii] override def typeClass = implicitly
+      }
   }
 
   private[raii] trait ResourceFactoryTPoint[F[_]] extends Applicative[ResourceFactoryT[F, ?]] {
     private[raii] implicit def typeClass: Applicative[F]
 
-    override def point[A](a: => A): ResourceFactoryT[F, A] = { () =>
-      Applicative[F].point(ResourceT.unmanaged(a))
-    }
+    override def point[A](a: => A): ResourceFactoryT[F, A] =
+      ResourceFactoryTExtractor.apply(Applicative[F].point(ResourceT.unmanaged(a)))
   }
+
+  import com.thoughtworks.raii.transformers.ResourceFactoryTExtractor.unwrap
 
   private[raii] trait ResourceFactoryTApplicative[F[_]]
       extends Applicative[ResourceFactoryT[F, ?]]
       with ResourceFactoryTPoint[F] {
 
     override def ap[A, B](fa: => ResourceFactoryT[F, A])(f: => ResourceFactoryT[F, (A) => B]): ResourceFactoryT[F, B] = {
-      () =>
-        Applicative[F].apply2(fa.acquire(), f.acquire()) { (releasableA, releasableF) =>
+      ResourceFactoryTExtractor.apply(
+        Applicative[F].apply2(unwrap(fa), unwrap(f)) { (releasableA, releasableF) =>
           new ResourceT[F, B] {
             override val value: B = releasableF.value(releasableA.value)
 
@@ -135,47 +176,52 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
             }
           }
         }
+      )
     }
   }
 
-  implicit def resourceFactoryTParallelApplicative[F[_]](
-      implicit F0: Applicative[Lambda[R => F[R] @@ Parallel]]
-  ): Applicative[Lambda[R => ResourceFactoryT[F, R] @@ Parallel]] = {
-    new Applicative[Lambda[R => ResourceFactoryT[F, R] @@ Parallel]] {
-      override def point[A](a: => A): ResourceFactoryT[F, A] @@ Parallel = {
-        Parallel({ () =>
-          val fa: F[ResourceT[F, A]] = Parallel.unwrap[F[ResourceT[F, A]]](
-            F0.point(
-              new ResourceT[F, A] {
-                override def value: A = a
-                override def release(): F[Unit] = Parallel.unwrap(F0.point(()))
-              }
-            ))
-          fa
-        }: ResourceFactoryT[F, A])
-      }
+  private[raii] trait ResourceFactoryTParallelApplicative[F[_]]
+      extends Applicative[Lambda[R => ResourceFactoryT[F, R] @@ Parallel]] {
+    private[raii] implicit def typeClass: Applicative[Lambda[R => F[R] @@ Parallel]]
 
-      override def ap[A, B](fa: => ResourceFactoryT[F, A] @@ Parallel)(
-          f: => ResourceFactoryT[F, A => B] @@ Parallel): ResourceFactoryT[F, B] @@ Parallel = {
-        Parallel { () =>
+    override def point[A](a: => A): ResourceFactoryT[F, A] @@ Parallel = {
+
+      Parallel({
+        val fa: F[ResourceT[F, A]] = Parallel.unwrap[F[ResourceT[F, A]]](
+          typeClass.point(
+            new ResourceT[F, A] {
+              override def value: A = a
+
+              override def release(): F[Unit] = Parallel.unwrap(typeClass.point(()))
+            }
+          ))
+        ResourceFactoryTExtractor.apply(fa)
+      }: ResourceFactoryT[F, A])
+    }
+
+    override def ap[A, B](fa: => ResourceFactoryT[F, A] @@ Parallel)(
+        f: => ResourceFactoryT[F, A => B] @@ Parallel): ResourceFactoryT[F, B] @@ Parallel = {
+      Parallel {
+        ResourceFactoryTExtractor.apply(
           Parallel.unwrap[F[ResourceT[F, B]]](
-            F0.apply2(
-              Parallel(Parallel.unwrap(fa).acquire()),
-              Parallel(Parallel.unwrap(f).acquire())
+            typeClass.apply2(
+              Parallel(unwrap(Parallel.unwrap(fa))),
+              Parallel(unwrap(Parallel.unwrap(f)))
             ) { (resourceA, resourceF) =>
               new ResourceT[F, B] {
                 override val value: B = resourceF.value(resourceA.value)
 
                 override def release(): F[Unit] = {
-                  Parallel.unwrap[F[Unit]](F0.apply2(Parallel(resourceA.release()), Parallel(resourceF.release())) {
-                    (_: Unit, _: Unit) =>
-                      ()
-                  })
+                  Parallel.unwrap[F[Unit]](
+                    typeClass.apply2(Parallel(resourceA.release()), Parallel(resourceF.release())) {
+                      (_: Unit, _: Unit) =>
+                        ()
+                    })
                 }
               }
             }
           )
-        }
+        )
       }
     }
   }
@@ -186,10 +232,10 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
     private[raii] implicit override def typeClass: Monad[F]
 
     override def bind[A, B](fa: ResourceFactoryT[F, A])(f: (A) => ResourceFactoryT[F, B]): ResourceFactoryT[F, B] = {
-      () =>
+      ResourceFactoryTExtractor.apply(
         for {
-          releasableA <- fa.acquire()
-          releasableB <- f(releasableA.value).acquire()
+          releasableA <- unwrap(fa)
+          releasableB <- unwrap(f(releasableA.value))
         } yield {
           new ResourceT[F, B] {
             override def value: B = releasableB.value
@@ -199,12 +245,9 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
             }
           }
         }
+      )
     }
 
-  }
-
-  private def catchError[F[_]: MonadError[?[_], S], S, A](fa: F[A]): F[S \/ A] = {
-    fa.map(_.right[S]).handleError(_.left[A].point[F])
   }
 
   private[raii] trait ResourceFactoryTMonadError[F[_], S]
@@ -212,25 +255,28 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
       with ResourceFactoryTPoint[F] {
     private[raii] implicit def typeClass: MonadError[F, S]
 
-    override def raiseError[A](e: S): ResourceFactoryT[F, A] = { () =>
-      typeClass.raiseError[ResourceT[F, A]](e)
-    }
+    override def raiseError[A](e: S): ResourceFactoryT[F, A] =
+      ResourceFactoryTExtractor.apply(typeClass.raiseError[ResourceT[F, A]](e))
 
     override def handleError[A](fa: ResourceFactoryT[F, A])(f: (S) => ResourceFactoryT[F, A]): ResourceFactoryT[F, A] = {
-      () =>
-        fa.acquire().handleError { s =>
-          f(s).acquire()
+      ResourceFactoryTExtractor.apply(
+        unwrap(fa).handleError { s =>
+          unwrap(f(s))
         }
+      )
     }
 
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.catchError
+
     override def bind[A, B](fa: ResourceFactoryT[F, A])(f: A => ResourceFactoryT[F, B]): ResourceFactoryT[F, B] = {
-      () =>
-        catchError(fa.acquire()).flatMap {
+      ResourceFactoryTExtractor.apply(
+        catchError(unwrap(fa)).flatMap {
           case \/-(releasableA) =>
-            catchError(f(releasableA.value).acquire()).flatMap[ResourceT[F, B]] {
+            catchError(unwrap(f(releasableA.value))).flatMap[ResourceT[F, B]] {
               case \/-(releasableB) =>
                 new ResourceT[F, B] {
                   override def value: B = releasableB.value
+
                   override def release(): F[Unit] = {
                     catchError(releasableB.release()).flatMap {
                       case \/-(()) =>
@@ -250,6 +296,7 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
           case either @ -\/(s) =>
             typeClass.raiseError[ResourceT[F, B]](s)
         }
+      )
     }
   }
 
@@ -260,33 +307,46 @@ object ResourceFactoryT extends LowPriorityResourceFactoryTInstances0 {
 
     override def chooseAny[A](
         head: ResourceFactoryT[F, A],
-        tail: Seq[ResourceFactoryT[F, A]]): ResourceFactoryT[F, (A, Seq[ResourceFactoryT[F, A]])] = { () =>
-      typeClass.chooseAny(head.acquire(), tail.map(_.acquire())).map {
-        case (fa, residuals) =>
-          new ResourceT[F, (A, Seq[ResourceFactoryT[F, A]])] {
-            override val value: (A, Seq[ResourceFactoryT[F, A]]) =
-              (fa.value, residuals.map { residual: F[ResourceT[F, A]] =>
-                { () =>
-                  residual
-                }: ResourceFactoryT[F, A]
-              })
+        tail: Seq[ResourceFactoryT[F, A]]): ResourceFactoryT[F, (A, Seq[ResourceFactoryT[F, A]])] = {
+      ResourceFactoryTExtractor.apply(
+        typeClass.chooseAny(unwrap(head), tail.map(unwrap)).map {
+          case (fa, residuals) =>
+            new ResourceT[F, (A, Seq[ResourceFactoryT[F, A]])] {
+              override val value: (A, Seq[ResourceFactoryT[F, A]]) =
+                (fa.value, residuals.map { residual: F[ResourceT[F, A]] =>
+                  { ResourceFactoryTExtractor.apply(residual) }: ResourceFactoryT[F, A]
+                })
 
-            override def release(): F[Unit] = fa.release()
+              override def release(): F[Unit] = fa.release()
+            }
+
+        }
+      )
+
+    }
+  }
+
+  private[raii] trait ResourceFactoryTBindRec[F[_]]
+      extends BindRec[ResourceFactoryT[F, ?]]
+      with ResourceFactoryTMonad[F] {
+    private[raii] implicit override def typeClass: Monad[F]
+    private[raii] implicit def B: BindRec[F]
+
+    override def tailrecM[A, B](f: A => ResourceFactoryT[F, A \/ B])(a: A): ResourceFactoryT[F, B] = {
+      //F[ResourceT[F,B]]
+      //def tailrecM[A, B](f: A => F[A \/ B])(a: A): F[B]
+      B.tailrecM[A, ResourceT[F, B]] { a: A =>
+        typeClass.map(ResourceFactoryT.unwrap(f(a))) { resource: ResourceT[F, A \/ B] =>
+          val aaa: A \/ ResourceT[F, B] = resource.value match {
+            case -\/(aa) => ??? //aa \/
+            case \/-(bb) => ???
           }
 
-      }
+          aaa
+        }
+      }(a): F[ResourceT[F, B]]
 
+      ???
     }
   }
-
-  implicit val resourceFactoryTMonadTrans = new MonadTrans[ResourceFactoryT] {
-
-    override def liftM[F[_]: Monad, A](fa: F[A]): ResourceFactoryT[F, A] = { () =>
-      fa.map(ResourceT.unmanaged(_))
-    }
-
-    override def apply[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = resourceFactoryTMonad
-
-  }
-
 }
