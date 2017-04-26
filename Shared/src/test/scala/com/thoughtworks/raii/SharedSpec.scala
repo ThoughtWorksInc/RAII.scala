@@ -3,11 +3,10 @@ package com.thoughtworks.raii
 import com.thoughtworks.raii.ResourceFactoryTSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.ResourceFactoryTSpec._
 import com.thoughtworks.raii.Shared.SharedOps
-import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceFactoryTExtractor, ResourceT}
+import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceT}
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
-import com.thoughtworks.raii.transformers.ResourceFactoryT.using
-import com.thoughtworks.tryt.TryT.tryTBindRec
-import com.thoughtworks.tryt.TryT.tryTFunctor
+import com.thoughtworks.raii.transformers.ResourceFactoryT.{resourceFactoryTMonad, using}
+import com.thoughtworks.tryt.TryT.{tryTBindRec, tryTFunctor, tryTParallelApplicative}
 import com.thoughtworks.tryt.{TryT, TryTParallelApplicative}
 
 import scala.util.{Success, Try}
@@ -73,7 +72,8 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
   }
 
   class FutureDelayFakeResource(allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource],
-                                idGenerator: () => String) {
+                                idGenerator: () => String)
+      extends AutoCloseable {
     val id: String = idGenerator()
 
     def this(allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource], constantId: String) = {
@@ -99,51 +99,14 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
               case Some(_) =>
               case None => throw CanNotCloseResourceTwice()
             }
-
             Future.now(())
           }
         }
       )
     }
-  }
 
-//  class FutureDelayFakeResource(allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource],
-//                                idGenerator: () => String)
-//      extends {
-//    val id: String = idGenerator()
-//  } with ResourceFactoryT[Future, String] {
-//
-//    def this(allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource], constantId: String) = {
-//      this(allOpenedResources, { () =>
-//        constantId
-//      })
-//    }
-//
-//    override def acquire(): Future[ResourceT[Future, String]] = {
-//
-//      if (allOpenedResources.contains(id)) {
-//        throw CanNotOpenResourceTwice()
-//      }
-//      allOpenedResources(id) = this
-//
-//      Future.delay {
-//        new ResourceT[Future, String] {
-//          override def value: String = id
-//
-//          override def release(): Future[Unit] = {
-//            val removed = allOpenedResources.remove(id)
-//
-//            removed match {
-//              case Some(_) =>
-//              case None => throw CanNotCloseResourceTwice()
-//            }
-//
-//            Future.now(())
-//          }
-//        }
-//      }
-//    }
-//  }
+    override def close(): Unit = ()
+  }
 
   "when working with scalaz's Future, it must asynchronously acquire and release" in {
     val events = mutable.Buffer.empty[String]
@@ -277,307 +240,320 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     p.future
   }
 
-  "reference count test with shared -- async -- raise exception" in {
+  "reference count test with shared  --apply2 -- no exception --with FutureDelayFakeResource" in {
     val events = mutable.Buffer.empty[String]
-    val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
+    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val sharedResource: RAIIFuture[FakeResource] =
-      managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+    val sharedResource: ResourceFactoryT[Future, String] =
+      ResourceFactoryT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
-//    import com.thoughtworks.raii.transformers.ResourceFactoryT.
-//    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTParallelApplicative
+    val pf1: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
 
-//    import com.thoughtworks.raii.transformers.ResourceFactoryT._
+    val pf2: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
 
-    val mappedResource = raiiFutureMonad.map(sharedResource)(Try(_))
+    val trypf1 = TryT(pf1)
+    val trypf2 = TryT(pf2)
 
-    val mr = TryT[RAIIFuture, FakeResource](mappedResource)
+    val parallelPf1 = Parallel(trypf1)
+    val parallelPf2 = Parallel(trypf2)
 
-    implicit val F: BindRec[ResourceFactoryT[Future, ?]] = ???
+    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import scalaz.concurrent.Future.futureParallelApplicativeInstance
+    import scalaz.concurrent.Future.futureInstance
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTParallelApplicative
 
-//    tryTBindRec[ResourceFactoryT[Future, ?]](
-//      implicitly,
-//      BindRec[ResourceFactoryT[Future, ?]]
-//    ).bind(mr) { r =>
-//      ???
-//    }
+    val parallelResult: RAIITask[String] @@ Parallel =
+      tryTParallelApplicative[ResourceFactoryT[Future, ?]].apply2(parallelPf1, parallelPf2) { (a: String, b: String) =>
+        events += "using a & b"
+        a + b
+      }
 
-    val usingResource = ???
-//      mr.flatMap { r1: FakeResource =>
-//      events += "using 0"
-//      allOpenedResources("0") should be(r1)
-//
-//      EitherT.eitherTMonadError[ResourceFactoryT[Future, ?], Throwable].raiseError[Assertion](new Boom)
-//    }
+    val result: RAIITask[String] = Parallel.unwrap(parallelResult)
+    val raiiFuture: RAIIFuture[Try[String]] = TryT.unapply(result).get
+    val future: Future[Try[String]] = ResourceFactoryT.run(raiiFuture)
 
-//    val future: Future[Throwable \/ Assertion] = ??? //usingResource.run.run
-//
-//    val p = Promise[Assertion]
-//
-//    future.unsafePerformAsync { either =>
-//      inside(either) {
-//        case -\/(e) =>
-//          p.success {
-//            e should be(a[Boom])
-//            allOpenedResources.keys shouldNot contain("0")
-//            events should be(Seq("using 0"))
-//          }
-//      }
-//    }
-//    p.future
+    val p = Promise[Assertion]
 
-    ???
+    future.unsafePerformAsync { either =>
+      inside(either) {
+        case Success(value) =>
+          p.success {
+            value should be("00")
+            events should be(Seq("using a & b"))
+          }
+      }
+    }
+    p.future
   }
 
-//
-//  "reference count test with shared -- Nondeterminism: mapBoth -- no exception --with FutureFakeResource" in {
-//    val events = mutable.Buffer.empty[String]
-//    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
-//
-//    val sharedResource: ResourceFactoryT[Future, String] =
-//      new FutureDelayFakeResource(allOpenedResources, "0").shared
-//
-//    val pf1: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](sharedResource.map(\/.right))
-//    val pf2: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](sharedResource.map(\/.right))
-//
-//    import com.thoughtworks.raii.EitherTNondeterminism._
-//
-//    val result: RAIITask[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
-//      Nondeterminism[ResourceFactoryT[Future, ?]]).mapBoth(pf1, pf2) { (a: String, b: String) =>
-//      events += "using a & b"
-//      a + b
-//    }
-//
-//    val future: Future[Throwable \/ String] = result.run.run
-//
-//    val p = Promise[Assertion]
-//
-//    future.unsafePerformAsync { either =>
-//      inside(either) {
-//        case \/-(value) =>
-//          p.success {
-//            value should be("00")
-//            events should be(Seq("using a & b"))
-//          }
-//      }
-//    }
-//    p.future
-//  }
-//
-//  "reference count test with shared -- Nondeterminism: mapBoth -- raise exception --with FutureFakeResource" in {
-//    val events = mutable.Buffer.empty[String]
-//    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
-//
-//    val sharedResource: ResourceFactoryT[Future, String] =
-//      new FutureDelayFakeResource(allOpenedResources, "0").shared
-//
-//    val pf1: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](sharedResource.map(\/.right))
-//    val pf2: RAIITask[String] =
-//      EitherT.eitherTMonadError[ResourceFactoryT[Future, ?], Throwable].raiseError[String](new Boom)
-//
-//    import com.thoughtworks.raii.EitherTNondeterminism._
-//    import com.thoughtworks.raii.ResourceFactoryT.resourceFactoryTParallelApplicative
-//
-//    implicit def throwableSemigroup = new Semigroup[Throwable] {
-//      override def append(f1: Throwable, f2: => Throwable): Throwable = f1
-//    }
-//
-//    val result: RAIITask[String] = Parallel.unwrap[RAIITask[String]](
-//      Applicative[Lambda[x => RAIITask[x] @@ Parallel]]
-//        .apply2(Parallel(pf1), Parallel(pf2)) { (a: String, b: String) =>
-//          events += "using a & b"
-//          a + b
-//        })
-//
-//    val future: Future[Throwable \/ String] = result.run.run
-//
-//    val p = Promise[Assertion]
-//
-//    future.unsafePerformAsync { either =>
-//      inside(either) {
-//        case -\/(e) =>
-//          p.success {
-//            e should be(a[Boom])
-//            events should be(Seq())
-//          }
-//      }
-//    }
-//    p.future
-//  }
-//
-//  "reference count test -- shared and not shared -- Nondeterminism: nmap3 -- no exception --with FutureFakeResource" in {
-//    val events = mutable.Buffer.empty[String]
-//    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
-//
-//    val resource0: ResourceFactoryT[Future, String] = new FutureDelayFakeResource(allOpenedResources, "0")
-//    val resource1: ResourceFactoryT[Future, String] = new FutureDelayFakeResource(allOpenedResources, "1").shared
-//
-//    val pf0: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource0.map(\/.right))
-//    val pf1: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-//    val pf2: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-//
-//    import com.thoughtworks.raii.EitherTNondeterminism._
-//
-//    val result: RAIITask[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
-//      Nondeterminism[ResourceFactoryT[Future, ?]]).nmap3(pf0, pf1, pf2) { (a: String, b: String, c: String) =>
-//      events += "using a & b & c"
-//      a + b + c
-//    }
-//
-//    val future: Future[Throwable \/ String] = result.run.run
-//
-//    val p = Promise[Assertion]
-//
-//    future.unsafePerformAsync { either =>
-//      inside(either) {
-//        case \/-(value) =>
-//          p.success {
-//            value should be("011")
-//            events should be(Seq("using a & b & c"))
-//          }
-//      }
-//    }
-//    p.future
-//  }
-//
-//  "reference count test -- shared and not shared -- Nondeterminism: nmap3 -- no exception --with FutureFakeResource --async acquire" in {
-//    val events = mutable.Buffer.empty[String]
-//    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
-//
-//    val allCallBack = mutable.HashMap.empty[String, ResourceT[Future, String] => Unit]
-//
-//    val resource0: ResourceFactoryT[Future, String] =
-//      new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "0")
-//    val resource1: ResourceFactoryT[Future, String] =
-//      new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "1").shared
-//
-//    val pf0: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource0.map(\/.right))
-//    val pf1: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-//    val pf2: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-//
-//    import com.thoughtworks.raii.EitherTNondeterminism._
-//
-//    val result: RAIITask[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
-//      Nondeterminism[ResourceFactoryT[Future, ?]]).nmap3(pf0, pf1, pf2) { (a: String, b: String, c: String) =>
-//      events += "using a & b & c"
-//      a + b + c
-//    }
-//
-//    val future: Future[Throwable \/ String] = result.run.run
-//
-//    val p = Promise[Assertion]
-//
-//    future.unsafePerformAsync { either =>
-//      inside(either) {
-//        case \/-(value) =>
-//          p.success {
-//            value should be("011")
-//            events should be(Seq("using a & b & c"))
-//          }
-//      }
-//    }
-//
-//    allCallBack.foreach { callBackTuple =>
-//      callBackTuple._2 {
-//        new ResourceT[Future, String] {
-//          override def value: String = callBackTuple._1
-//
-//          override def release(): Future[Unit] = {
-//            val removed = allOpenedResources.remove(callBackTuple._1)
-//
-//            removed match {
-//              case Some(_) =>
-//              case None => throw new CanNotCloseResourceTwice
-//            }
-//
-//            Future.now(())
-//          }
-//        }
-//      }
-//    }
-//
-//    p.future
-//  }
-//
-//  "reference count test -- shared and not shared -- Nondeterminism: nmap3 -- no exception --with FutureFakeResource --async acquire and release" in {
-//    val events = mutable.Buffer.empty[String]
-//    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
-//
-//    val allAcquireCallBack = mutable.HashMap.empty[String, ResourceT[Future, String] => Unit]
-//
-//    val resource0: ResourceFactoryT[Future, String] =
-//      new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "0")
-//    val resource1: ResourceFactoryT[Future, String] =
-//      new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "1").shared
-//
-//    val pf0: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource0.map(\/.right))
-//    val pf1: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-//    val pf2: RAIITask[String] =
-//      EitherT[ResourceFactoryT[Future, ?], Throwable, String](resource1.map(\/.right))
-//
-//    import com.thoughtworks.raii.EitherTNondeterminism._
-//
-//    val result: RAIITask[String] = eitherTNondeterminism[ResourceFactoryT[Future, ?], Throwable](
-//      Nondeterminism[ResourceFactoryT[Future, ?]]).nmap3(pf0, pf1, pf2) { (a: String, b: String, c: String) =>
-//      events += "using a & b & c"
-//      a + b + c
-//    }
-//
-//    val future: Future[Throwable \/ String] = result.run.run
-//
-//    val p = Promise[Assertion]
-//
-//    future.unsafePerformAsync { either =>
-//      inside(either) {
-//        case \/-(value) =>
-//          p.success {
-//            value should be("011")
-//            events should be(Seq("using a & b & c"))
-//          }
-//      }
-//    }
-//
-//    val allReleaseCallBack = mutable.HashMap.empty[String, Unit => Unit]
-//
-//    allAcquireCallBack.foreach { callBackTuple =>
-//      callBackTuple._2 {
-//        new ResourceT[Future, String] {
-//          override def value: String = callBackTuple._1
-//
-//          override def release(): Future[Unit] = {
-//            Future.async { f =>
-//              allReleaseCallBack(callBackTuple._1) = f
-//            }
-//          }
-//        }
-//      }
-//    }
-//
-//    while (allReleaseCallBack.keySet.nonEmpty) {
-//      allReleaseCallBack.foreach { callBackTuple =>
-//        callBackTuple._2 {
-//          val removed = allOpenedResources.remove(callBackTuple._1)
-//          allReleaseCallBack.remove(callBackTuple._1)
-//
-//          removed match {
-//            case Some(_) =>
-//            case None => throw new CanNotCloseResourceTwice
-//          }
-//        }
-//      }
-//    }
-//
-//    p.future
-//  }
+  "reference count test with shared --apply2 -- raise exception --with FutureDelayFakeResource" in {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
+
+    val sharedResource: ResourceFactoryT[Future, String] =
+      ResourceFactoryT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
+
+    val pf1: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
+
+    val trypf1 = TryT(pf1)
+
+    val parallelPf1 = Parallel(trypf1)
+    val parallelPf2 = Parallel(TryT.tryTMonadError[ResourceFactoryT[Future, ?]].raiseError[String](Boom()))
+
+    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import scalaz.concurrent.Future.futureParallelApplicativeInstance
+    import scalaz.concurrent.Future.futureInstance
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTParallelApplicative
+
+    val parallelResult: RAIITask[String] @@ Parallel =
+      tryTParallelApplicative[ResourceFactoryT[Future, ?]].apply2(parallelPf1, parallelPf2) { (a: String, b: String) =>
+        events += "using a & b"
+        a + b
+      }
+
+    val result: RAIITask[String] = Parallel.unwrap(parallelResult)
+    val raiiFuture: RAIIFuture[Try[String]] = TryT.unapply(result).get
+    val future: Future[Try[String]] = ResourceFactoryT.run(raiiFuture)
+
+    val p = Promise[Assertion]
+
+    future.unsafePerformAsync { either =>
+      inside(either) {
+        case scala.util.Failure(e) =>
+          p.success {
+            e should be(a[Boom])
+            events should be(Seq())
+          }
+      }
+    }
+    p.future
+  }
+
+  "reference count test -- shared and not shared -- apply3 -- no exception --with FutureDelayFakeResource" in {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
+
+    val resource0: ResourceFactoryT[Future, String] =
+      ResourceFactoryT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply())
+    val resource1: ResourceFactoryT[Future, String] =
+      ResourceFactoryT.apply(new FutureDelayFakeResource(allOpenedResources, "1").apply()).shared
+
+    val pf1: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
+
+    val pf2: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+
+    val pf3: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+
+    val trypf1 = TryT(pf1)
+    val trypf2 = TryT(pf2)
+    val trypf3 = TryT(pf3)
+
+    val parallelPf1 = Parallel(trypf1)
+    val parallelPf2 = Parallel(trypf2)
+    val parallelPf3 = Parallel(trypf3)
+
+    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import scalaz.concurrent.Future.futureParallelApplicativeInstance
+    import scalaz.concurrent.Future.futureInstance
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTParallelApplicative
+
+    val parallelResult: RAIITask[String] @@ Parallel =
+      tryTParallelApplicative[ResourceFactoryT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+        (a: String, b: String, c: String) =>
+          events += "using a & b & c"
+          a + b + c
+      }
+
+    val result: RAIITask[String] = Parallel.unwrap(parallelResult)
+    val raiiFuture: RAIIFuture[Try[String]] = TryT.unapply(result).get
+    val future: Future[Try[String]] = ResourceFactoryT.run(raiiFuture)
+
+    val p = Promise[Assertion]
+
+    future.unsafePerformAsync { either =>
+      inside(either) {
+        case Success(value) =>
+          p.success {
+            value should be("011")
+            events should be(Seq("using a & b & c"))
+          }
+      }
+    }
+    p.future
+  }
+
+  "reference count test -- shared and not shared --apply3 -- no exception --with FutureFakeResource --async acquire" in {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
+
+    val allCallBack = mutable.HashMap.empty[String, ResourceT[Future, String] => Unit]
+
+    val resource0: ResourceFactoryT[Future, String] =
+      ResourceFactoryT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "0").apply())
+    val resource1: ResourceFactoryT[Future, String] =
+      ResourceFactoryT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "1").apply()).shared
+
+    val pf1: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
+
+    val pf2: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+
+    val pf3: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+
+    val trypf1 = TryT(pf1)
+    val trypf2 = TryT(pf2)
+    val trypf3 = TryT(pf3)
+
+    val parallelPf1 = Parallel(trypf1)
+    val parallelPf2 = Parallel(trypf2)
+    val parallelPf3 = Parallel(trypf3)
+
+    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import scalaz.concurrent.Future.futureParallelApplicativeInstance
+    import scalaz.concurrent.Future.futureInstance
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTParallelApplicative
+
+    val parallelResult: RAIITask[String] @@ Parallel =
+      tryTParallelApplicative[ResourceFactoryT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+        (a: String, b: String, c: String) =>
+          events += "using a & b & c"
+          a + b + c
+      }
+
+    val result: RAIITask[String] = Parallel.unwrap(parallelResult)
+    val raiiFuture: RAIIFuture[Try[String]] = TryT.unapply(result).get
+    val future: Future[Try[String]] = ResourceFactoryT.run(raiiFuture)
+
+    val p = Promise[Assertion]
+
+    future.unsafePerformAsync { either =>
+      inside(either) {
+        case Success(value) =>
+          p.success {
+            value should be("011")
+            events should be(Seq("using a & b & c"))
+          }
+      }
+    }
+
+    allCallBack.foreach { callBackTuple =>
+      callBackTuple._2 {
+        new ResourceT[Future, String] {
+          override def value: String = callBackTuple._1
+
+          override def release(): Future[Unit] = {
+            val removed = allOpenedResources.remove(callBackTuple._1)
+
+            removed match {
+              case Some(_) =>
+              case None => throw new CanNotCloseResourceTwice
+            }
+
+            Future.now(())
+          }
+        }
+      }
+    }
+
+    p.future
+  }
+
+  "reference count test -- shared and not shared --apply3 -- no exception --with FutureFakeResource -- --async acquire and release" in {
+    val events = mutable.Buffer.empty[String]
+    val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
+
+    val allAcquireCallBack = mutable.HashMap.empty[String, ResourceT[Future, String] => Unit]
+
+    val resource0: ResourceFactoryT[Future, String] =
+      ResourceFactoryT.apply(new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "0").apply())
+    val resource1: ResourceFactoryT[Future, String] =
+      ResourceFactoryT
+        .apply(new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "1").apply())
+        .shared
+
+    val pf1: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
+
+    val pf2: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+
+    val pf3: ResourceFactoryT[Future, Try[String]] =
+      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+
+    val trypf1 = TryT(pf1)
+    val trypf2 = TryT(pf2)
+    val trypf3 = TryT(pf3)
+
+    val parallelPf1 = Parallel(trypf1)
+    val parallelPf2 = Parallel(trypf2)
+    val parallelPf3 = Parallel(trypf3)
+
+    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import scalaz.concurrent.Future.futureParallelApplicativeInstance
+    import scalaz.concurrent.Future.futureInstance
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTParallelApplicative
+
+    val parallelResult: RAIITask[String] @@ Parallel =
+      tryTParallelApplicative[ResourceFactoryT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+        (a: String, b: String, c: String) =>
+          events += "using a & b & c"
+          a + b + c
+      }
+
+    val result: RAIITask[String] = Parallel.unwrap(parallelResult)
+    val raiiFuture: RAIIFuture[Try[String]] = TryT.unapply(result).get
+    val future: Future[Try[String]] = ResourceFactoryT.run(raiiFuture)
+
+    val p = Promise[Assertion]
+
+    future.unsafePerformAsync { either =>
+      inside(either) {
+        case Success(value) =>
+          p.success {
+            value should be("011")
+            events should be(Seq("using a & b & c"))
+          }
+      }
+    }
+
+    val allReleaseCallBack = mutable.HashMap.empty[String, Unit => Unit]
+
+    allAcquireCallBack.foreach { callBackTuple =>
+      callBackTuple._2 {
+        new ResourceT[Future, String] {
+          override def value: String = callBackTuple._1
+
+          override def release(): Future[Unit] = {
+            Future.async { f =>
+              allReleaseCallBack(callBackTuple._1) = f
+            }
+          }
+        }
+      }
+    }
+
+    while (allReleaseCallBack.keySet.nonEmpty) {
+      allReleaseCallBack.foreach { callBackTuple =>
+        callBackTuple._2 {
+          val removed = allOpenedResources.remove(callBackTuple._1)
+          allReleaseCallBack.remove(callBackTuple._1)
+
+          removed match {
+            case Some(_) =>
+            case None => throw new CanNotCloseResourceTwice
+          }
+        }
+      }
+    }
+
+    p.future
+  }
 }
