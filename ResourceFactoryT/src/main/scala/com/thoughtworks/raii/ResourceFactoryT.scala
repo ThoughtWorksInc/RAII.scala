@@ -325,28 +325,4 @@ object transformers {
 
     }
   }
-
-  private[raii] trait ResourceFactoryTBindRec[F[_]]
-      extends BindRec[ResourceFactoryT[F, ?]]
-      with ResourceFactoryTMonad[F] {
-    private[raii] implicit override def typeClass: Monad[F]
-    private[raii] implicit def B: BindRec[F]
-
-    override def tailrecM[A, B](f: A => ResourceFactoryT[F, A \/ B])(a: A): ResourceFactoryT[F, B] = {
-      //F[ResourceT[F,B]]
-      //def tailrecM[A, B](f: A => F[A \/ B])(a: A): F[B]
-      B.tailrecM[A, ResourceT[F, B]] { a: A =>
-        typeClass.map(ResourceFactoryT.unwrap(f(a))) { resource: ResourceT[F, A \/ B] =>
-          val aaa: A \/ ResourceT[F, B] = resource.value match {
-            case -\/(aa) => ??? //aa \/
-            case \/-(bb) => ???
-          }
-
-          aaa
-        }
-      }(a): F[ResourceT[F, B]]
-
-      ???
-    }
-  }
 }
