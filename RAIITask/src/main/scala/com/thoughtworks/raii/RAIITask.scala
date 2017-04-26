@@ -5,9 +5,10 @@ import java.util.concurrent.ExecutorService
 import com.thoughtworks.raii.ResourceFactoryT.ResourceT
 
 import scala.concurrent.ExecutionContext
-import scalaz.{-\/, EitherT, \/, \/-}
+import scalaz.{-\/, ContT, EitherT, \/, \/-}
 import scalaz.concurrent.{Future, Task}
 import scala.language.higherKinds
+import scalaz.Free.Trampoline
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
@@ -65,6 +66,18 @@ private[raii] trait RAIITaskFunctions {
 
   def unmanaged[A](future: Future[A]): RAIITask[A] = {
     unmanaged(new Task(future.map(\/-(_))))
+  }
+
+  def unmanaged[A](continuation: ContT[Trampoline, Unit, A]): RAIITask[A] = {
+    unmanaged(
+      new Task(
+        Future.Async { continue: ((Throwable \/ A) => Trampoline[Unit]) =>
+          continuation { a: A =>
+            continue(\/-(a))
+          }.run
+        }
+      )
+    )
   }
 
   def delay[A](a: => A): RAIITask[A] = {
