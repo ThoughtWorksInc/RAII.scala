@@ -7,7 +7,7 @@ import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceT}
 import com.thoughtworks.tryt.TryT
 
 import scala.concurrent.ExecutionContext
-import scalaz.{-\/, @@, Applicative, ContT, Monad, Semigroup, \/, \/-}
+import scalaz.{-\/, @@, Applicative, ContT, Monad, MonadError, Semigroup, \/, \/-}
 import scalaz.concurrent.{Future, Task}
 import scala.language.higherKinds
 import scala.util.control.NoStackTrace
@@ -33,7 +33,7 @@ object future {
       Some(unwrap(doA))
 
     //TODO: BindRec
-    implicit def doMonadInstances: Monad[Do]
+    implicit def doMonadErrorInstances: MonadError[Do, Throwable]
 
     implicit def doParallelApplicative(
         implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]]
@@ -53,17 +53,12 @@ object future {
     import Future.futureInstance
     import TryT.tryTMonadError
     import Future.futureParallelApplicativeInstance
-    override def doMonadInstances: Monad[TryT[RAIIFuture, ?]] = implicitly
+    override def doMonadErrorInstances: MonadError[TryT[RAIIFuture, ?], Throwable] = implicitly
 
     override def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = implicitly
   }
 
   type Do[A] = DoExtractor.Do[A]
-
-  implicit def doMonadInstances: Monad[Do] = DoExtractor.doMonadInstances
-  implicit def doParallelApplicative(
-      implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]] =
-    DoExtractor.doParallelApplicative
 
   // DoFunctions is a workaround for type alias `Covariant`,
   // because the abstract type cannot defined in object.
@@ -72,6 +67,11 @@ object future {
   }
 
   object Do extends DoFunctions {
+
+    implicit def doMonadErrorInstances: MonadError[Do, Throwable] = DoExtractor.doMonadErrorInstances
+    implicit def doParallelApplicative(
+        implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]] =
+      DoExtractor.doParallelApplicative
 
     /** @template */
     type AsyncReleasable[A] = ResourceT[Future, A]
