@@ -17,13 +17,6 @@ lazy val Shared =
 
 lazy val Do = project.dependsOn(EitherTNondeterminismJVM, Shared, ResourceFactoryTJVM, packageJVM)
 
-lazy val `sde-raii` =
-  crossProject.crossType(CrossType.Pure).dependsOn(ResourceFactoryT, ResourceFactoryT % "test->test", `package`)
-
-lazy val `sde-raiiJVM` = `sde-raii`.jvm.addSbtFiles(file("../build.sbt.shared"))
-
-lazy val `sde-raiiJS` = `sde-raii`.js.addSbtFiles(file("../build.sbt.shared"))
-
 lazy val EitherTNondeterminism = crossProject.crossType(CrossType.Pure)
 
 lazy val EitherTNondeterminismJVM = EitherTNondeterminism.jvm.addSbtFiles(file("../build.sbt.shared"))
@@ -52,7 +45,7 @@ lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
     UnidocKeys.unidocProjectFilter in ScalaUnidoc in UnidocKeys.unidoc := {
-      inProjects(ResourceFactoryTJVM, packageJVM, Shared, `sde-raiiJVM`, Do)
+      inProjects(ResourceFactoryTJVM, packageJVM, Shared, Do)
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
     scalacOptions += "-Xexperimental"
