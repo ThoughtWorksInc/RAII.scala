@@ -7,34 +7,19 @@ import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceT}
 import com.thoughtworks.tryt.TryT
 
 import scala.concurrent.ExecutionContext
-import scalaz.{-\/, @@, Applicative, BindRec, Monad, MonadError, \/, \/-}
+import scalaz.{-\/, @@, Applicative, Monad, Semigroup, \/, \/-}
 import scalaz.concurrent.{Future, Task}
 import scala.language.higherKinds
+import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success, Try}
 import scalaz.Tags.Parallel
+import scalaz.std.`try`.fromDisjunction
+import scalaz.std.`try`.toDisjunction
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
 object future {
-
-  private[future] val DoExtractor: DoExtractor = new DoExtractor {
-    override type Do[A] = TryT[RAIIFuture, A]
-
-    override def apply[A](run: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = run
-
-    override private[raii] def unwrap[F[_], A](doa: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = doa
-
-    override def doMonadInstances: BindRec[TryT[RAIIFuture, ?]] with MonadError[TryT[RAIIFuture, ?], Throwable] =
-      ??? //implicitly
-
-    override def doParallelApplicative: Applicative[TryT[RAIIFuture, ?]] @@ Parallel = ??? //implicitly
-
-  }
-
-  import scala.language.higherKinds
-
-  type Do[A] = DoExtractor.Do[A]
 
   private[raii] trait DoExtractor {
     type Do[A]
@@ -46,12 +31,40 @@ object future {
     final def unapply[A](doA: Do[A]): Some[TryT[RAIIFuture, A]] =
       Some(unwrap(doA))
 
-    implicit def doMonadInstances: BindRec[Do] with Monad[Do]
-    implicit def doParallelApplicative: Applicative[Do] @@ Parallel
+    //TODO: BindRec
+    implicit def doMonadInstances: Monad[Do]
+
+    implicit def doParallelApplicative(
+        implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]]
   }
 
-  implicit def doMonadInstances: BindRec[Do] with Monad[Do] = DoExtractor.doMonadInstances
-  implicit def doParallelApplicative: Applicative[Do] @@ Parallel = DoExtractor.doParallelApplicative
+  private[future] val DoExtractor: DoExtractor = new DoExtractor {
+    override type Do[A] = TryT[RAIIFuture, A]
+
+    override def apply[A](run: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = run
+
+    override private[raii] def unwrap[F[_], A](doa: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = doa
+
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTMonad
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTMonadError
+    import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTParallelApplicative
+    import TryT.tryTParallelApplicative
+    import Future.futureInstance
+    import TryT.tryTMonadError
+    import Future.futureParallelApplicativeInstance
+    override def doMonadInstances: Monad[TryT[RAIIFuture, ?]] = implicitly
+
+    override def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = implicitly
+  }
+
+  import scala.language.higherKinds
+
+  type Do[A] = DoExtractor.Do[A]
+
+  implicit def doMonadInstances: Monad[Do] = DoExtractor.doMonadInstances
+  implicit def doParallelApplicative(
+      implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]] =
+    DoExtractor.doParallelApplicative
 
   // DoFunctions is a workaround for type alias `Covariant`,
   // because the abstract type cannot defined in object.
@@ -86,7 +99,7 @@ object future {
       Do(
         task.get.map { either =>
           new ResourceT[Future, Try[A]] {
-            override def value: Try[A] = eitherToTry(either)
+            override def value: Try[A] = fromDisjunction(either)
 
             override def release(): Future[Unit] = {
               either match {
@@ -113,7 +126,7 @@ object future {
       Do(
         task.get.map { either =>
           new ResourceT[Future, Try[A]] {
-            override def value: Try[A] = eitherToTry(either)
+            override def value: Try[A] = fromDisjunction(either)
 
             override def release(): Future[Unit] = Future.now(())
           }
@@ -141,16 +154,22 @@ object future {
       })
     }
 
-//      def run[A](doa: Do[A]): Task[A] = {
-//        //Future[Throwable \/ A]
-//        new Task(doa.run.run)
-//      }
-
-    def eitherToTry[A](either: Throwable \/ A): Try[A] = either match {
-      case -\/(e) => Failure(e)
-      case \/-(value) => Success(value)
+    /**
+      * Return a `Task` which contains the value of A,
+      * NOTE: If a is managed resources, you should use `map` before `run`,
+      * because [[ResourceFactoryT.run]] will invoke [[ResourceT.release]].
+      * @example {{{
+      *   val doInputStream: Do[InputStream] = ???
+      *   doInputStream.map { input: InputStream =>
+      *     doSomethingWith(input)
+      *   }.run.unsafeAsync....
+      * }}}
+      */
+    def run[A](doA: Do[A]): Task[A] = {
+      val future: Future[Throwable \/ A] =
+        ResourceFactoryT.run(ResourceFactoryT.apply(Do.unapply(doA).get)).map(toDisjunction)
+      new Task(future)
     }
-
   }
 
 }
