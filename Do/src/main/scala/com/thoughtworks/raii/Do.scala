@@ -57,8 +57,6 @@ object future {
     override def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = implicitly
   }
 
-  import scala.language.higherKinds
-
   type Do[A] = DoExtractor.Do[A]
 
   implicit def doMonadInstances: Monad[Do] = DoExtractor.doMonadInstances
