@@ -7,11 +7,12 @@ import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceT}
 import com.thoughtworks.tryt.TryT
 
 import scala.concurrent.ExecutionContext
-import scalaz.{-\/, @@, Applicative, Monad, Semigroup, \/, \/-}
+import scalaz.{-\/, @@, Applicative, ContT, Monad, Semigroup, \/, \/-}
 import scalaz.concurrent.{Future, Task}
 import scala.language.higherKinds
 import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success, Try}
+import scalaz.Free.Trampoline
 import scalaz.Tags.Parallel
 import scalaz.std.`try`.fromDisjunction
 import scalaz.std.`try`.toDisjunction
@@ -134,6 +135,18 @@ object future {
 
     def unmanaged[A](future: Future[A]): Do[A] = {
       unmanaged(new Task(future.map(\/-(_))))
+    }
+
+    def unmanaged[A](continuation: ContT[Trampoline, Unit, A]): Do[A] = {
+      unmanaged(
+        new Task(
+          Future.Async { continue: ((Throwable \/ A) => Trampoline[Unit]) =>
+            continuation { a: A =>
+              continue(\/-(a))
+            }.run
+          }
+        )
+      )
     }
 
     def delay[A](a: => A): Do[A] = {
