@@ -90,16 +90,22 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
   import Exceptions._
 
+  import scalaz.syntax.all._
+  import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTMonadError
+  import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTApplicative
+  import scalaz.concurrent.Future._
+
   "must acquire and release" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managed(new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
 
-    val ioResource: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr0).map { r0 =>
+    val ioResource: ResourceFactoryT[IO, FakeResource] = mr0.map { r0 =>
       allOpenedResources("r0") should be(a[FakeResource])
       r0
     }
-    ResourceFactoryT.run(ResourceFactoryT(ioResource)).unsafePerformIO()
+
+    ResourceFactoryT.run(ioResource).unsafePerformIO()
 
     allOpenedResources.keys shouldNot contain("r0")
   }
@@ -128,15 +134,16 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     val mr = managed(new MyResource)
 
     try {
-      val ioResource: IO[ResourceT[IO, MyResource]] = ResourceFactoryT.unwrap(mr).map { r =>
+      val ioResource: ResourceFactoryT[IO, MyResource] = mr.map { r =>
         events += "error is coming"
         throw Boom()
         r
       }
-      ResourceFactoryT.run(ResourceFactoryT(ioResource)).unsafePerformIO()
+      ResourceFactoryT.run(ioResource).unsafePerformIO()
     } catch {
       case _: Boom =>
     }
+
     events should be(mutable.Buffer("acquire 0", "error is coming", "release 0"))
   }
 
@@ -165,11 +172,11 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     val mr = managed(new MyResource)
 
     intercept[IllegalStateException] {
-      val ioResource: IO[ResourceT[IO, MyResource]] = ResourceFactoryT.unwrap(mr).map { r =>
+      val ioResource: ResourceFactoryT[IO, MyResource] = mr.map { r =>
         events += "error is coming"
         r
       }
-      ResourceFactoryT.run(ResourceFactoryT(ioResource)).unsafePerformIO()
+      ResourceFactoryT.run(ioResource).unsafePerformIO()
     }
 
     events should be(mutable.Buffer("acquire r", "error is coming", "release r"))
@@ -199,12 +206,12 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     val mr = managed(new MyResource)
 
     intercept[Boom] {
-      val ioResource: IO[ResourceT[IO, MyResource]] = ResourceFactoryT.unwrap(mr).map { r =>
+      val ioResource: ResourceFactoryT[IO, MyResource] = mr.map { r =>
         events += "error is coming"
         throw Boom()
         r
       }
-      ResourceFactoryT.run(ResourceFactoryT(ioResource)).unsafePerformIO()
+      ResourceFactoryT.run(ioResource).unsafePerformIO()
     }
 
     events should be(mutable.Buffer("acquire 0", "error is coming", "release 0"))
@@ -236,13 +243,15 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
     val mr = managed(new MyResource)
 
-    val ioResource: IO[ResourceT[IO, MyResource]] = ResourceFactoryT.unwrap(mr).map { r =>
+    val ioResource: ResourceFactoryT[IO, MyResource] = mr.map { r =>
       r
     }
-    ResourceFactoryT.run(ResourceFactoryT(ioResource)).unsafePerformIO()
+    ResourceFactoryT.run(ioResource).unsafePerformIO()
 
     events should be(mutable.Buffer("acquire 0", "release 0"))
   }
+
+  import com.thoughtworks.raii.transformers.ResourceFactoryT._
 
   "both of resources must acquire and release" in {
 
@@ -252,16 +261,14 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     allOpenedResources.keys shouldNot contain("mr0")
     allOpenedResources.keys shouldNot contain("mr1")
 
-    val ioResource0: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr0).map { r0 =>
+    val ioResource0: ResourceFactoryT[IO, FakeResource] = mr0.flatMap { r0 =>
       allOpenedResources("mr0") should be(a[FakeResource])
-      val ioResource1: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr1).map { r1 =>
+      mr1.map { r1 =>
         allOpenedResources("mr1") should be(a[FakeResource])
         r1
       }
-      ResourceFactoryT.run(ResourceFactoryT(ioResource1)).unsafePerformIO()
-      r0
     }
-    ResourceFactoryT.run(ResourceFactoryT(ioResource0)).unsafePerformIO()
+    ResourceFactoryT.run(ioResource0).unsafePerformIO()
 
     allOpenedResources.keys shouldNot contain("mr0")
     allOpenedResources.keys shouldNot contain("mr1")
@@ -275,16 +282,14 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
 
-    val ioResource0: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr).map { r0 =>
+    val ioResource0: ResourceFactoryT[IO, FakeResource] = mr.flatMap { r0 =>
       allOpenedResources("0") should be(a[FakeResource])
-      val ioResource1: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr).map { r1 =>
+      mr.map { r1 =>
         allOpenedResources("1") should be(a[FakeResource])
         r1
       }
-      ResourceFactoryT.run(ResourceFactoryT(ioResource1)).unsafePerformIO()
-      r0
     }
-    ResourceFactoryT.run(ResourceFactoryT(ioResource0)).unsafePerformIO()
+    ResourceFactoryT.run(ioResource0).unsafePerformIO()
 
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
@@ -298,18 +303,15 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
 
-    val ioResource0: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr).map { r0 =>
+    val ioResource0: ResourceFactoryT[IO, FakeResource] = mr.flatMap { r0 =>
       allOpenedResources("0") should be(a[FakeResource])
-      val ioResource1: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr).map { r1 =>
+      mr.map { r1 =>
         allOpenedResources("0") should be(a[FakeResource])
         allOpenedResources("1") should be(a[FakeResource])
         r1
       }
-      ResourceFactoryT.run(ResourceFactoryT(ioResource1)).unsafePerformIO()
-      allOpenedResources.keys shouldNot contain("1")
-      r0
     }
-    ResourceFactoryT.run(ResourceFactoryT(ioResource0)).unsafePerformIO()
+    ResourceFactoryT.run(ioResource0).unsafePerformIO()
 
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
@@ -321,14 +323,12 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
     allOpenedResources.keys shouldNot contain("r0")
     intercept[CanNotOpenResourceTwice] {
 
-      val ioResource0: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr0).map { r0 =>
-        val ioResource1: IO[ResourceT[IO, FakeResource]] = ResourceFactoryT.unwrap(mr0).map { r1 =>
+      val ioResource0: ResourceFactoryT[IO, FakeResource] = mr0.flatMap { r0 =>
+        mr0.map { r1 =>
           r1
         }
-        ResourceFactoryT.run(ResourceFactoryT(ioResource1)).unsafePerformIO()
-        r0
       }
-      ResourceFactoryT.run(ResourceFactoryT(ioResource0)).unsafePerformIO()
+      ResourceFactoryT.run(ioResource0).unsafePerformIO()
     }
     allOpenedResources.keys should contain("r0")
   }
