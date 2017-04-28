@@ -2,9 +2,9 @@ addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.fu
 
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
 
-libraryDependencies += "org.scalaz" %%% "scalaz-core" % "7.2.10"
+libraryDependencies += "org.scalaz" %%% "scalaz-core" % "7.2.11"
 
-libraryDependencies += "org.scalaz" %% "scalaz-concurrent" % "7.2.10" % Test
+libraryDependencies += "org.scalaz" %% "scalaz-concurrent" % "7.2.11" % Test
 
 libraryDependencies += "com.thoughtworks.each" %%% "each" % "3.3.1" % Test
 

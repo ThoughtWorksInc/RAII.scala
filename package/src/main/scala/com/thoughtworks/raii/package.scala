@@ -1,5 +1,7 @@
 package com.thoughtworks
 
+import com.thoughtworks.raii.transformers.ResourceFactoryT
+
 import scala.language.higherKinds
 import scalaz._
 import scalaz.concurrent._
@@ -20,8 +22,5 @@ package object raii {
 
   /** @template */
   type RAIIFuture[A] = ResourceFactoryT[Future, A]
-
-  /** @template */
-  type RAIITask[A] = EitherT[RAIIFuture, Throwable, A]
 
 }
