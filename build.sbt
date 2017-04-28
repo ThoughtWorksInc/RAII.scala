@@ -1,11 +1,5 @@
 crossScalaVersions := Seq("2.11.11", "2.12.2")
 
-lazy val CovariantT = crossProject.crossType(CrossType.Pure)
-
-lazy val CovariantTJVM = CovariantT.jvm.addSbtFiles(file("../build.sbt.shared"))
-
-lazy val CovariantTJS = CovariantT.js.addSbtFiles(file("../build.sbt.shared"))
-
 lazy val ResourceFactoryT = crossProject.crossType(CrossType.Pure)
 
 lazy val ResourceFactoryTJVM = ResourceFactoryT.jvm.addSbtFiles(file("../build.sbt.shared"))
@@ -13,27 +7,9 @@ lazy val ResourceFactoryTJVM = ResourceFactoryT.jvm.addSbtFiles(file("../build.s
 lazy val ResourceFactoryTJS = ResourceFactoryT.js.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val Shared =
-  project.dependsOn(EitherTNondeterminismJVM % Test, ResourceFactoryTJVM, ResourceFactoryTJVM % "test->test")
+  project.dependsOn(ResourceFactoryTJVM, ResourceFactoryTJVM % "test->test")
 
-lazy val Do = project.dependsOn(EitherTNondeterminismJVM, Shared, ResourceFactoryTJVM, packageJVM)
-
-lazy val EitherTNondeterminism = crossProject.crossType(CrossType.Pure)
-
-lazy val EitherTNondeterminismJVM = EitherTNondeterminism.jvm.addSbtFiles(file("../build.sbt.shared"))
-
-lazy val EitherTNondeterminismJS = EitherTNondeterminism.js.addSbtFiles(file("../build.sbt.shared"))
-
-lazy val FreeTParallelApplicative = crossProject.crossType(CrossType.Pure)
-
-lazy val FreeTParallelApplicativeJVM = FreeTParallelApplicative.jvm.addSbtFiles(file("../build.sbt.shared"))
-
-lazy val FreeTParallelApplicativeJS = FreeTParallelApplicative.js.addSbtFiles(file("../build.sbt.shared"))
-
-lazy val KleisliParallelApplicative = crossProject.crossType(CrossType.Pure)
-
-lazy val KleisliParallelApplicativeJVM = KleisliParallelApplicative.jvm.addSbtFiles(file("../build.sbt.shared"))
-
-lazy val KleisliParallelApplicativeJS = KleisliParallelApplicative.js.addSbtFiles(file("../build.sbt.shared"))
+lazy val Do = project.dependsOn(Shared, ResourceFactoryTJVM, packageJVM)
 
 lazy val `package` = crossProject.crossType(CrossType.Pure).dependsOn(ResourceFactoryT)
 
