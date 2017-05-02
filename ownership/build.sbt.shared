@@ -1,0 +1,13 @@
+libraryDependencies += "org.scalaz" %%% "scalaz-core" % "7.2.11"
+
+addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
+
+libraryDependencies += "org.scalatest" %%% "scalatest" % "3.0.1" % Test
+
+scalacOptions += "-Xexperimental" // Enable SAM type for Scala 2.11
+
+scalacOptions += "-Ypartial-unification"
+
+addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+
+libraryDependencies += "com.github.mpilquist" %% "simulacrum" % "0.10.0"

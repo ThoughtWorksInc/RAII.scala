@@ -10,6 +10,13 @@ lazy val Shared =
   project.dependsOn(ResourceFactoryTJVM, ResourceFactoryTJVM % "test->test")
 
 lazy val Do = project.dependsOn(Shared, ResourceFactoryTJVM)
+
+lazy val ownership = crossProject.crossType(CrossType.Pure)
+
+lazy val ownershipJVM = ownership.jvm.addSbtFiles(file("../build.sbt.shared"))
+
+lazy val ownershipJS = ownership.js.addSbtFiles(file("../build.sbt.shared"))
+
 lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
