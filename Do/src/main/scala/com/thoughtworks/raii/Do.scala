@@ -22,6 +22,9 @@ import scalaz.std.`try`.toDisjunction
   */
 object future {
 
+  /** @template */
+  private[raii] type RAIIFuture[A] = ResourceFactoryT[Future, A]
+
   private[raii] trait DoExtractor {
     type Do[A]
 
@@ -86,9 +89,6 @@ object future {
     def unapply[F[_], A](doA: Do[A]): Some[Future[AsyncReleasable[Try[A]]]] = {
       Some(unwrap(doA))
     }
-
-    /** @template */
-    private[raii] type RAIIFuture[A] = ResourceFactoryT[Future, A]
 
     /** @template */
     //private[raii] type Do[A] = TryT[RAIIFuture, A]
