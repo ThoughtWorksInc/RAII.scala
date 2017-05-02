@@ -23,7 +23,7 @@ import scala.util.control.NoStackTrace
 /**
   * Created by 张志豪 on 2017/4/6.
   */
-class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
+object SharedSpec {
 
   def raiiFutureMonad: Monad[RAIIFuture] = ResourceFactoryT.resourceFactoryTMonad[Future]
 
@@ -108,6 +108,10 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     override def close(): Unit = ()
   }
 
+}
+
+class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
+  import SharedSpec._
   "when working with scalaz's Future, it must asynchronously acquire and release" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
