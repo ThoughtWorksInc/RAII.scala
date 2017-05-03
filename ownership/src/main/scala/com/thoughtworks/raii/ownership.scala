@@ -1,10 +1,7 @@
 package com.thoughtworks.raii
 
-import java.security.acl.Owner
-
 import scala.language.higherKinds
 import scala.language.implicitConversions
-import simulacrum.typeclass
 import shapeless._
 
 /**
