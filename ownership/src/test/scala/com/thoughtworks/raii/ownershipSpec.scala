@@ -1,6 +1,6 @@
 package com.thoughtworks.raii
 
-import java.io.{CharArrayWriter, Closeable, Writer}
+import java.io.{Closeable, StringWriter, Writer}
 
 import com.thoughtworks.raii.ownership._
 import com.thoughtworks.raii.ownership.implicits._
@@ -22,7 +22,7 @@ final class ownershipSpec extends FreeSpec with Matchers {
   }
 
   "Given a resource owned by an owner" - {
-    val owner1 = new MyOwner(Owned(new CharArrayWriter()))
+    val owner1 = new MyOwner(Owned(new StringWriter()))
 
     "Then the resource should be able to borrow" in {
       def scope(notMine: Borrowing[Writer]) = {}
@@ -38,7 +38,7 @@ final class ownershipSpec extends FreeSpec with Matchers {
     }
 
     "And the resource should not be used for another owner" in {
-      val owner3 = new MyOwner(Owned(new CharArrayWriter()))
+      val owner3 = new MyOwner(Owned(new StringWriter()))
       "owner3.foo(owner1.myWriter)" shouldNot typeCheck
     }
   }
