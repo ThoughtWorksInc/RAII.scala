@@ -8,8 +8,4 @@ scalacOptions += "-Xexperimental" // Enable SAM type for Scala 2.11
 
 scalacOptions += "-Ypartial-unification"
 
-addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
-
-libraryDependencies += "com.github.mpilquist" %% "simulacrum" % "0.10.0"
-
 libraryDependencies += "com.chuusai" %% "shapeless" % "2.3.2"

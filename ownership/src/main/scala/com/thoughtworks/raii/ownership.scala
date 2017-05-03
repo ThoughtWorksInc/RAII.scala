@@ -26,11 +26,10 @@ object ownership {
   type Owned[+Owner, +Ownage] = Owned.Owned[Owner, Ownage]
   type Borrowing[+Ownage] = Owned.Borrowing[Ownage]
 
-  @typeclass
   trait Move[Ownage] {
     def apply[OldOwner: Witness.Aux, NewOwner](owned: OldOwner Owned Ownage): NewOwner Owned Ownage
   }
-  @typeclass
+
   trait Duplicate[Ownage] {
     def apply[NewOwner](borrowing: Borrowing[Ownage]): NewOwner Owned Ownage
   }
