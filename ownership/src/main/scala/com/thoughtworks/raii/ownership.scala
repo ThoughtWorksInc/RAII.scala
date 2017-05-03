@@ -14,14 +14,13 @@ object ownership {
   trait OwnedExtractor {
     type Owned[+Owner, +Ownage] <: Borrowing[Ownage]
     type Borrowing[+Ownage] <: Ownage
-    def apply[Ownage, Owner](ownage: Ownage): Owner Owned Ownage
+    def apply[Owner, Ownage](ownage: Ownage): Owner Owned Ownage
   }
 
   val Owned: OwnedExtractor = new OwnedExtractor {
     override type Owned[+Owner, +Ownage] = Ownage
     override type Borrowing[+Ownage] = Ownage
-
-    override def apply[Ownage, Owner](ownage: Ownage): Ownage = ownage
+    override def apply[Owner, Ownage](ownage: Ownage): Ownage = ownage
   }
 
   type Owned[+Owner, +Ownage] = Owned.Owned[Owner, Ownage]
@@ -32,8 +31,8 @@ object ownership {
     def apply[OldOwner: Witness.Aux, NewOwner](owned: OldOwner Owned Ownage): NewOwner Owned Ownage
   }
   @typeclass
-  trait Copy[Ownage] {
-    def apply[NewOwner](borrowing: Owned.Borrowing[Ownage]): NewOwner Owned Ownage
+  trait Duplicate[Ownage] {
+    def apply[NewOwner](borrowing: Borrowing[Ownage]): NewOwner Owned Ownage
   }
 
   final class OwnOps[Owner] {
@@ -48,9 +47,9 @@ object ownership {
         move(owned)
       }
     }
-    implicit final class DuplicateOps[Ownage](borrowing: Owned.Borrowing[Ownage]) {
-      def move[NewOwner](implicit copy: Copy[Ownage]): NewOwner Owned Ownage = {
-        copy(borrowing)
+    implicit final class DuplicateOps[Ownage](borrowing: Borrowing[Ownage]) {
+      def duplicate[NewOwner](implicit duplicate: Duplicate[Ownage]): NewOwner Owned Ownage = {
+        duplicate(borrowing)
       }
     }
   }
