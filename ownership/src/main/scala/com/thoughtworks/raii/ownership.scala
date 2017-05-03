@@ -12,19 +12,20 @@ import shapeless._
   */
 object ownership {
   trait OwnedExtractor {
-    type Out[+Owner, +Ownage] <: Borrowing[Ownage]
+    type Owned[+Owner, +Ownage] <: Borrowing[Ownage]
     type Borrowing[+Ownage] <: Ownage
-    def apply[Ownage, Owner](ownage: Ownage): Out[Owner, Ownage]
+    def apply[Ownage, Owner](ownage: Ownage): Owner Owned Ownage
   }
 
   val Owned: OwnedExtractor = new OwnedExtractor {
-    override type Out[+Owner, +Ownage] = Ownage
+    override type Owned[+Owner, +Ownage] = Ownage
     override type Borrowing[+Ownage] = Ownage
 
     override def apply[Ownage, Owner](ownage: Ownage): Ownage = ownage
   }
 
-  type Owned[+Owner, +Ownage] = Owned.Out[Owner, Ownage]
+  type Owned[+Owner, +Ownage] = Owned.Owned[Owner, Ownage]
+  type Borrowing[+Ownage] = Owned.Borrowing[Ownage]
 
   @typeclass
   trait Move[Ownage] {
