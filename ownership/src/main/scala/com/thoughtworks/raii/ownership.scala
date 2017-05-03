@@ -30,6 +30,9 @@ object ownership {
   val foo: opacityTypes.type = opacityTypes
 
   type Owned[+Owner, +A] = opacityTypes.Owned[Owner, A]
+  object Owned {
+    def apply[Owner, A](a: A) = opacityTypes.own[Owner, A](a)
+  }
   type Scoped[+A] = opacityTypes.Scoped[A]
   type GarbageCollectable[+A] = opacityTypes.GarbageCollectable[A]
   type Borrowing[+A] = opacityTypes.Borrowing[A]
