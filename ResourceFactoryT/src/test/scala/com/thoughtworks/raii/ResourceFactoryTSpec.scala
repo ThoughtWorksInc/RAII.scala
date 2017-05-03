@@ -15,19 +15,19 @@ import scala.concurrent.{Await, Promise}
 import scala.language.higherKinds
 import scalaz.effect.IO
 import scalaz.effect.IOInstances
-import ownership.opacityTypes
+import ownership._
 import ownership.implicits._
 
 private[raii] object ResourceFactoryTSpec {
 
-  def managed[Resource <: AutoCloseable](autoCloseable: => Resource): ResourceFactoryT[IO, opacityTypes.Borrowing[Resource]] =
+  def managed[Resource <: AutoCloseable](autoCloseable: => Resource): ResourceFactoryT[IO, Borrowing[Resource]] =
     managedT[IO, Resource](autoCloseable)
 
   def managedT[F[_]: Applicative, Resource <: AutoCloseable](
-      autoCloseable: => Resource): ResourceFactoryT[F, opacityTypes.Borrowing[Resource]] = {
+      autoCloseable: => Resource): ResourceFactoryT[F, Borrowing[Resource]] = {
     ResourceFactoryT(
       Applicative[F].point {
-        new ResourceT[F, opacityTypes.Borrowing[Resource]] {
+        new ResourceT[F, Borrowing[Resource]] {
           override val value: this.type Owned Resource = this own autoCloseable
 
           override def release(): F[Unit] = Applicative[F].point(value.close())
