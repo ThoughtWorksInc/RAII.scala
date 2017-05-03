@@ -1,57 +1,56 @@
 package com.thoughtworks.raii
 
+import java.security.acl.Owner
+
 import scala.language.higherKinds
 import scala.language.implicitConversions
 import simulacrum.typeclass
+import shapeless._
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
 object ownership {
+  trait OwnedExtractor {
+    type Out[+Owner, +Ownage] <: Borrowing[Ownage]
+    type Borrowing[+Ownage] <: Ownage
+    def apply[Ownage, Owner](ownage: Ownage): Out[Owner, Ownage]
+  }
+
+  val Owned: OwnedExtractor = new OwnedExtractor {
+    override type Out[+Owner, +Ownage] = Ownage
+    override type Borrowing[+Ownage] = Ownage
+
+    override def apply[Ownage, Owner](ownage: Ownage): Ownage = ownage
+  }
+
+  type Owned[+Owner, +Ownage] = Owned.Out[Owner, Ownage]
 
   @typeclass
-  trait Move[A] {
-    def unsafeMove(a: A): A
+  trait Move[Ownage] {
+    def apply[OldOwner: Witness.Aux, NewOwner](owned: OldOwner Owned Ownage): NewOwner Owned Ownage
   }
-
   @typeclass
-  trait Duplicate[A] {
-    def unsafeDuplicate(a: A): A
+  trait Copy[Ownage] {
+    def apply[NewOwner](borrowing: Owned.Borrowing[Ownage]): NewOwner Owned Ownage
   }
 
-  @typeclass
-  trait RAII[A] extends Duplicate[A] with Move[A]
-
-  private[ownership] trait Pimp {
-
-    type Ownage[A, Owner <: Singleton] <: A
-    type Borrow[A] <: A
-
-    def borrow[A, Owner <: Singleton](ownage: Ownage[A, Owner]): Borrow[A]
-    def duplicate[A: Duplicate, OldOwner <: Singleton, NewOwner <: Singleton](
-        ownage: Ownage[A, OldOwner]): Ownage[A, NewOwner]
-    def move[A: Move, OldOwner <: Singleton, NewOwner <: Singleton](ownage: Ownage[A, OldOwner]): Ownage[A, NewOwner]
-
+  final class OwnOps[Owner] {
+    def own[Ownage](ownage: Ownage): Owner Owned Ownage = Owned(ownage)
   }
 
-  private[ownership] val pimp: Pimp = new Pimp {
-    override type Ownage[A, Owner <: Singleton] = A
-    override type Borrow[A] = A
+  object implicits {
+    implicit def toOwnOps(owner: AnyRef): OwnOps[owner.type] = new OwnOps[owner.type]
 
-    override def borrow[A, Owner <: Singleton](a: A): A = a
-
-    override def duplicate[A: Duplicate, Owner <: Singleton, NewOwner <: Singleton](ownage: A): A =
-      Duplicate[A].unsafeDuplicate(ownage)
-
-    override def move[A: Move, Owner <: Singleton, NewOwner <: Singleton](ownage: A): A = Move[A].unsafeMove(ownage)
+    implicit final class MoveOps[Ownage, OldOwner: Witness.Aux](owned: OldOwner Owned Ownage) {
+      def move[NewOwner](implicit move: Move[Ownage]): NewOwner Owned Ownage = {
+        move(owned)
+      }
+    }
+    implicit final class DuplicateOps[Ownage](borrowing: Owned.Borrowing[Ownage]) {
+      def move[NewOwner](implicit copy: Copy[Ownage]): NewOwner Owned Ownage = {
+        copy(borrowing)
+      }
+    }
   }
-
-  type Ownage[A, Owner <: Singleton] = pimp.Ownage[A, Owner]
-  type Borrow[A] = pimp.Borrow[A]
-
-  implicit final class OwnageOps[A, Owner <: Singleton](underlying: Ownage[A, Owner]) {
-    def move[NewOwner <: Singleton](implicit move: Move[A]) = pimp.move(underlying)
-    def duplicate[NewOwner <: Singleton](implicit duplicate: Duplicate[A]) = pimp.duplicate(underlying)
-  }
-
 }
