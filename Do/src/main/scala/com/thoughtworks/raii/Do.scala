@@ -3,7 +3,7 @@ package com.thoughtworks.raii
 import java.util.concurrent.ExecutorService
 
 import com.thoughtworks.raii
-import com.thoughtworks.raii.ownership.{Borrowing, Owned}
+import com.thoughtworks.raii.ownership._
 import com.thoughtworks.raii.ownership.implicits._
 import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceT}
 import com.thoughtworks.tryt.TryT
