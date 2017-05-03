@@ -8,6 +8,7 @@ import shapeless._
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
 object ownership {
+  private[ownership]
   trait OpacityTypes {
     type Owned[+Owner, +A] <: Scoped[A]
     type Scoped[+A] <: Borrowing[A]
@@ -18,7 +19,7 @@ object ownership {
   }
 
   @inline
-  val opacityTypes: OpacityTypes = new OpacityTypes {
+  private[ownership] val opacityTypes: OpacityTypes = new OpacityTypes {
     override type Owned[+Owner, +A] = A
     override type Scoped[+A] = A
     override type GarbageCollectable[+A] = A
@@ -26,8 +27,6 @@ object ownership {
     @inline override def own[Owner, A](a: A): A = a
     @inline override def garbageCollectable[A](a: A): A = a
   }
-
-  val foo: opacityTypes.type = opacityTypes
 
   type Owned[+Owner, +A] = opacityTypes.Owned[Owner, A]
   object Owned {
