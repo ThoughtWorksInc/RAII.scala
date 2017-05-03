@@ -95,10 +95,10 @@ object future {
     /** @template */
     //private[raii] type Do[A] = TryT[RAIIFuture, A]
 
-    def managed[A <: AutoCloseable](task: Task[A]): Do[Borrowing[A]] = {
+    def scoped[A <: AutoCloseable](task: Task[A]): Do[Scoped[A]] = {
       Do(
         task.get.map { either =>
-          new ResourceT[Future, Try[Borrowing[A]]] {
+          new ResourceT[Future, Try[Scoped[A]]] {
             override def value: Try[this.type Owned A] = fromDisjunction(either).map(this.own)
 
             override def release(): Future[Unit] = {
@@ -114,15 +114,15 @@ object future {
       )
     }
 
-    def managed[A <: AutoCloseable](future: Future[A]): Do[Borrowing[A]] = {
-      managed(new Task(future.map(\/-(_))))
+    def scoped[A <: AutoCloseable](future: Future[A]): Do[Scoped[A]] = {
+      scoped(new Task(future.map(\/-(_))))
     }
 
-    def managed[A <: AutoCloseable](a: => A): Do[Borrowing[A]] = {
-      managed(Task.delay(a))
+    def scoped[A <: AutoCloseable](a: => A): Do[Scoped[A]] = {
+      scoped(Task.delay(a))
     }
 
-    def unmanaged[A](task: Task[A]): Do[A] = {
+    def delay[A](task: Task[A]): Do[A] = {
       Do(
         task.get.map { either =>
           new ResourceT[Future, Try[A]] {
@@ -134,12 +134,12 @@ object future {
       )
     }
 
-    def unmanaged[A](future: Future[A]): Do[A] = {
-      unmanaged(new Task(future.map(\/-(_))))
+    def delay[A](future: Future[A]): Do[A] = {
+      delay(new Task(future.map(\/-(_))))
     }
 
-    def unmanaged[A](continuation: ContT[Trampoline, Unit, A]): Do[A] = {
-      unmanaged(
+    def delay[A](continuation: ContT[Trampoline, Unit, A]): Do[A] = {
+      delay(
         new Task(
           Future.Async { continue: ((Throwable \/ A) => Trampoline[Unit]) =>
             continuation { a: A =>
@@ -151,15 +151,15 @@ object future {
     }
 
     def delay[A](a: => A): Do[A] = {
-      unmanaged(Task.delay(a))
+      delay(Task.delay(a))
     }
 
     def now[A](a: A): Do[A] = {
-      unmanaged(Task.now(a))
+      delay(Task.now(a))
     }
 
     def jump()(implicit executorService: ExecutionContext): Do[Unit] = {
-      unmanaged(Future.async { handler: (Unit => Unit) =>
+      delay(Future.async { handler: (Unit => Unit) =>
         executorService.execute { () =>
           handler(())
         }
@@ -168,7 +168,7 @@ object future {
 
     /**
       * Return a `Task` which contains the value of A,
-      * NOTE: If a is managed resources, you should use `map` before `run`,
+      * NOTE: If a is scoped resources, you should use `map` before `run`,
       * because [[ResourceFactoryT.run]] will invoke [[ResourceT.release]].
       * @example {{{
       *   val doInputStream: Do[InputStream] = ???
