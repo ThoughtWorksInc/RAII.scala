@@ -1,6 +1,6 @@
 crossScalaVersions := Seq("2.11.11", "2.12.2")
 
-lazy val ResourceFactoryT = crossProject.crossType(CrossType.Pure)
+lazy val ResourceFactoryT = crossProject.crossType(CrossType.Pure).dependsOn(ownership)
 
 lazy val ResourceFactoryTJVM = ResourceFactoryT.jvm.addSbtFiles(file("../build.sbt.shared"))
 
