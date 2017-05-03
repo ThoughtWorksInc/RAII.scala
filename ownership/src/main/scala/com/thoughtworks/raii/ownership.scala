@@ -8,43 +8,58 @@ import shapeless._
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
 object ownership {
-  trait OwnedExtractor {
-    type Owned[+Owner, +Ownage] <: Borrowing[Ownage]
-    type Borrowing[+Ownage] <: Ownage
-    def apply[Owner, Ownage](ownage: Ownage): Owner Owned Ownage
+  private[ownership]
+  trait OpacityTypes {
+    type Owned[+Owner, +A] <: Scoped[A]
+    type Scoped[+A] <: Borrowing[A]
+    type GarbageCollectable[+A] <: Borrowing[A]
+    type Borrowing[+A] <: A
+    private[ownership] def own[Owner, A](a: A): Owner Owned A
+    private[ownership] def garbageCollectable[A](a: A): GarbageCollectable[A]
   }
 
-  val Owned: OwnedExtractor = new OwnedExtractor {
-    override type Owned[+Owner, +Ownage] = Ownage
-    override type Borrowing[+Ownage] = Ownage
-    override def apply[Owner, Ownage](ownage: Ownage): Ownage = ownage
+  @inline
+  private[ownership] val opacityTypes: OpacityTypes = new OpacityTypes {
+    override type Owned[+Owner, +A] = A
+    override type Scoped[+A] = A
+    override type GarbageCollectable[+A] = A
+    override type Borrowing[+A] = A
+    @inline override def own[Owner, A](a: A): A = a
+    @inline override def garbageCollectable[A](a: A): A = a
   }
 
-  type Owned[+Owner, +Ownage] = Owned.Owned[Owner, Ownage]
-  type Borrowing[+Ownage] = Owned.Borrowing[Ownage]
+  type Owned[+Owner, +A] = opacityTypes.Owned[Owner, A]
+  object Owned {
+    def apply[Owner, A](a: A) = opacityTypes.own[Owner, A](a)
+  }
+  type Scoped[+A] = opacityTypes.Scoped[A]
+  type GarbageCollectable[+A] = opacityTypes.GarbageCollectable[A]
+  type Borrowing[+A] = opacityTypes.Borrowing[A]
 
-  trait Move[Ownage] {
-    def apply[OldOwner: Witness.Aux, NewOwner](owned: OldOwner Owned Ownage): NewOwner Owned Ownage
+  trait Move[A] {
+    def apply[OldOwner: Witness.Aux, NewOwner](owned: OldOwner Owned A): NewOwner Owned A
   }
 
-  trait Duplicate[Ownage] {
-    def apply[NewOwner](borrowing: Borrowing[Ownage]): NewOwner Owned Ownage
+  trait Duplicate[A] {
+    def apply[NewOwner](borrowing: Borrowing[A]): NewOwner Owned A
   }
 
   final class OwnOps[Owner] {
-    def own[Ownage](ownage: Ownage): Owner Owned Ownage = Owned(ownage)
+    def own[A](a: A): Owner Owned A = opacityTypes.own(a)
   }
+
+  def garbageCollectable[A](a: A): GarbageCollectable[A] = opacityTypes.garbageCollectable(a)
 
   object implicits {
     implicit def toOwnOps(owner: AnyRef): OwnOps[owner.type] = new OwnOps[owner.type]
 
-    implicit final class MoveOps[Ownage, OldOwner: Witness.Aux](owned: OldOwner Owned Ownage) {
-      def move[NewOwner](implicit move: Move[Ownage]): NewOwner Owned Ownage = {
+    implicit final class MoveOps[A, OldOwner: Witness.Aux](owned: OldOwner Owned A) {
+      def move[NewOwner](implicit move: Move[A]): NewOwner Owned A = {
         move(owned)
       }
     }
-    implicit final class DuplicateOps[Ownage](borrowing: Borrowing[Ownage]) {
-      def duplicate[NewOwner](implicit duplicate: Duplicate[Ownage]): NewOwner Owned Ownage = {
+    implicit final class DuplicateOps[A](borrowing: Borrowing[A]) {
+      def duplicate[NewOwner](implicit duplicate: Duplicate[A]): NewOwner Owned A = {
         duplicate(borrowing)
       }
     }
