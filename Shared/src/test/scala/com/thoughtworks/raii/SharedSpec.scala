@@ -3,6 +3,7 @@ package com.thoughtworks.raii
 import com.thoughtworks.raii.ResourceFactoryTSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.ResourceFactoryTSpec._
 import com.thoughtworks.raii.Shared.SharedOps
+import com.thoughtworks.raii.ownership.Borrowing
 import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceT}
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
 import com.thoughtworks.raii.transformers.ResourceFactoryT.{resourceFactoryTMonad, using}
@@ -117,7 +118,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managedT[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
-    val asynchronousResource: Future[Unit] = using[Future, FakeResource, Unit](mr0, r0 => {
+    val asynchronousResource: Future[Unit] = using[Future, Borrowing[FakeResource], Unit](mr0, r0 => {
       Future.delay {
         events += "using r0"
         allOpenedResources("r0") should be(r0)
@@ -141,7 +142,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       val mr0 = managedT[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
       allOpenedResources.keys shouldNot contain("r0")
 
-      val asynchronousResource: Task[Unit] = using[Task, FakeResource, Unit](mr0, r0 => {
+      val asynchronousResource: Task[Unit] = using[Task, Borrowing[FakeResource], Unit](mr0, r0 => {
         Task.delay {
           events += "using r0"
           allOpenedResources("r0") should be(r0)
@@ -162,7 +163,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
   "reference count test with shared -- async" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr: ResourceFactoryT[Future, FakeResource] =
+    val mr: ResourceFactoryT[Future, Borrowing[FakeResource]] =
       managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
     allOpenedResources.keys shouldNot contain("0")
 

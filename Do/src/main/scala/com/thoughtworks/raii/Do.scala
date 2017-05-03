@@ -3,6 +3,8 @@ package com.thoughtworks.raii
 import java.util.concurrent.ExecutorService
 
 import com.thoughtworks.raii
+import com.thoughtworks.raii.ownership.{Borrowing, Owned}
+import com.thoughtworks.raii.ownership.implicits._
 import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceT}
 import com.thoughtworks.tryt.TryT
 
@@ -93,11 +95,11 @@ object future {
     /** @template */
     //private[raii] type Do[A] = TryT[RAIIFuture, A]
 
-    def managed[A <: AutoCloseable](task: Task[A]): Do[A] = {
+    def managed[A <: AutoCloseable](task: Task[A]): Do[Borrowing[A]] = {
       Do(
         task.get.map { either =>
-          new ResourceT[Future, Try[A]] {
-            override def value: Try[A] = fromDisjunction(either)
+          new ResourceT[Future, Try[Borrowing[A]]] {
+            override def value: Try[this.type Owned A] = fromDisjunction(either).map(this.own)
 
             override def release(): Future[Unit] = {
               either match {
@@ -112,11 +114,11 @@ object future {
       )
     }
 
-    def managed[A <: AutoCloseable](future: Future[A]): Do[A] = {
+    def managed[A <: AutoCloseable](future: Future[A]): Do[Borrowing[A]] = {
       managed(new Task(future.map(\/-(_))))
     }
 
-    def managed[A <: AutoCloseable](a: => A): Do[A] = {
+    def managed[A <: AutoCloseable](a: => A): Do[Borrowing[A]] = {
       managed(Task.delay(a))
     }
 
