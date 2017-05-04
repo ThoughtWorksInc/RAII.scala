@@ -2,14 +2,12 @@ package com.thoughtworks.raii
 
 import scala.language.higherKinds
 import scala.language.implicitConversions
-import shapeless._
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
 object ownership {
-  private[ownership]
-  trait OpacityTypes {
+  private[ownership] trait OpacityTypes {
     type Owned[+Owner, +A] <: Scoped[A]
     type Scoped[+A] <: Borrowing[A]
     type GarbageCollectable[+A] <: Borrowing[A]
@@ -36,8 +34,8 @@ object ownership {
   type GarbageCollectable[+A] = opacityTypes.GarbageCollectable[A]
   type Borrowing[+A] = opacityTypes.Borrowing[A]
 
-  trait Move[A] {
-    def apply[OldOwner: Witness.Aux, NewOwner](owned: OldOwner Owned A): NewOwner Owned A
+  trait Move[OldOwner, A] {
+    def apply[NewOwner](owned: OldOwner Owned A): NewOwner Owned A
   }
 
   trait Duplicate[A] {
@@ -53,8 +51,8 @@ object ownership {
   object implicits {
     implicit def toOwnOps(owner: AnyRef): OwnOps[owner.type] = new OwnOps[owner.type]
 
-    implicit final class MoveOps[A, OldOwner: Witness.Aux](owned: OldOwner Owned A) {
-      def move[NewOwner](implicit move: Move[A]): NewOwner Owned A = {
+    implicit final class MoveOps[OldOwner, A](owned: OldOwner Owned A) {
+      def move[NewOwner](implicit move: Move[OldOwner, A]): NewOwner Owned A = {
         move(owned)
       }
     }
