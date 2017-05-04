@@ -166,18 +166,21 @@ object future {
       })
     }
 
+    import shapeless.<:!<
+
     /**
-      * Return a `Task` which contains the value of A,
-      * NOTE: If a is scoped resources, you should use `map` before `run`,
-      * because [[ResourceFactoryT.run]] will invoke [[ResourceT.release]].
+      * Returns a `Task` of `A`, which will open `A` and release all resources during opening `A`.
+      *
+      * @note `A` itself must not be a is scoped resources,
+      *      though `A` may depends on some scoped resources during opening `A`.
       * @example {{{
-      *   val doInputStream: Do[InputStream] = ???
+      *   val doInputStream: Do[Scoped[InputStream]] = ???
       *   doInputStream.map { input: InputStream =>
       *     doSomethingWith(input)
       *   }.run.unsafeAsync....
       * }}}
       */
-    def run[A](doA: Do[A]): Task[A] = {
+    def run[A](doA: Do[A])(implicit notScoped: A <:!< Scoped[_]): Task[A] = {
       val future: Future[Throwable \/ A] =
         ResourceFactoryT.run(ResourceFactoryT.apply(Do.unapply(doA).get)).map(toDisjunction)
       new Task(future)
