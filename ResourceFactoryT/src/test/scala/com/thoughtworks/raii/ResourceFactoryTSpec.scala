@@ -20,7 +20,7 @@ import ownership.implicits._
 
 private[raii] object ResourceFactoryTSpec {
 
-  def managed[Resource <: AutoCloseable](autoCloseable: => Resource): ResourceFactoryT[IO, Borrowing[Resource]] =
+  def scoped[Resource <: AutoCloseable](autoCloseable: => Resource): ResourceFactoryT[IO, Borrowing[Resource]] =
     managedT[IO, Resource](autoCloseable)
 
   def managedT[F[_]: Applicative, Resource <: AutoCloseable](
@@ -101,7 +101,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
   "must acquire and release" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managed(new FakeResource(allOpenedResources, "r0"))
+    val mr0 = scoped(new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
 
     val ioResource: ResourceFactoryT[IO, FakeResource] = mr0.map { r0 =>
@@ -135,7 +135,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
       }
     }
 
-    val mr = managed(new MyResource)
+    val mr = scoped(new MyResource)
 
     try {
       val ioResource: ResourceFactoryT[IO, MyResource] = mr.map { r =>
@@ -173,7 +173,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
       }
     }
 
-    val mr = managed(new MyResource)
+    val mr = scoped(new MyResource)
 
     intercept[IllegalStateException] {
       val ioResource: ResourceFactoryT[IO, MyResource] = mr.map { r =>
@@ -207,7 +207,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
       }
     }
 
-    val mr = managed(new MyResource)
+    val mr = scoped(new MyResource)
 
     intercept[Boom] {
       val ioResource: ResourceFactoryT[IO, MyResource] = mr.map { r =>
@@ -245,7 +245,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
     }
 
-    val mr = managed(new MyResource)
+    val mr = scoped(new MyResource)
 
     val ioResource: ResourceFactoryT[IO, MyResource] = mr.map { r =>
       r
@@ -260,8 +260,8 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
   "both of resources must acquire and release" in {
 
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managed(new FakeResource(allOpenedResources, "mr0"))
-    val mr1 = managed(new FakeResource(allOpenedResources, "mr1"))
+    val mr0 = scoped(new FakeResource(allOpenedResources, "mr0"))
+    val mr1 = scoped(new FakeResource(allOpenedResources, "mr1"))
     allOpenedResources.keys shouldNot contain("mr0")
     allOpenedResources.keys shouldNot contain("mr1")
 
@@ -282,7 +282,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val idGenerator = ResourceFactoryTSpec.createIdGenerator()
-    val mr = managed(new FakeResource(allOpenedResources, idGenerator))
+    val mr = scoped(new FakeResource(allOpenedResources, idGenerator))
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
 
@@ -303,7 +303,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
   "must could be shared" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val idGenerator = ResourceFactoryTSpec.createIdGenerator()
-    val mr = managed(new FakeResource(allOpenedResources, idGenerator))
+    val mr = scoped(new FakeResource(allOpenedResources, idGenerator))
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
 
@@ -323,7 +323,7 @@ final class ResourceFactoryTSpec extends AsyncFreeSpec with Matchers with Inside
 
   "reference count test without shared" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managed(new FakeResource(allOpenedResources, "r0"))
+    val mr0 = scoped(new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
     intercept[CanNotOpenResourceTwice] {
 

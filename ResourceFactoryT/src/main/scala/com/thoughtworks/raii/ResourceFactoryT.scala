@@ -26,16 +26,16 @@ object transformers {
     /** Releases all the native resources [[ResourceFactoryT.unwrap]]d during creating this [[ResourceT]].
       *
       * @note After [[release]], [[value]] should not be used if:
-      *  - [[value]] is a managed native resource,
-      *    e.g. a [[com.thoughtworks.raii.sde.raii#managed managed]] `AutoCloseable`,
-      *  - or, [[value]] internally uses some managed native resources.
+      *  - [[value]] is a scoped native resource,
+      *    e.g. a [[com.thoughtworks.raii.sde.raii#scoped scoped]] `AutoCloseable`,
+      *  - or, [[value]] internally uses some scoped native resources.
       */
     def release(): F[Unit]
   }
 
   object ResourceT {
     @inline
-    def unmanaged[F[_]: Applicative, A](a: => A): ResourceT[F, A] = new ResourceT[F, A] {
+    def delay[F[_]: Applicative, A](a: => A): ResourceT[F, A] = new ResourceT[F, A] {
       override val value: A = a
 
       override def release(): F[Unit] = Applicative[F].point(())
@@ -103,7 +103,7 @@ object transformers {
     implicit val resourceFactoryTMonadTrans = new MonadTrans[ResourceFactoryT] {
 
       override def liftM[F[_]: Monad, A](fa: F[A]): ResourceFactoryT[F, A] =
-        ResourceFactoryTExtractor.apply(fa.map(ResourceT.unmanaged(_)))
+        ResourceFactoryTExtractor.apply(fa.map(ResourceT.delay(_)))
 
       override def apply[F[_]: Monad]: Monad[ResourceFactoryT[F, ?]] = resourceFactoryTMonad
     }
@@ -154,7 +154,7 @@ object transformers {
     private[raii] implicit def typeClass: Applicative[F]
 
     override def point[A](a: => A): ResourceFactoryT[F, A] =
-      ResourceFactoryTExtractor.apply(Applicative[F].point(ResourceT.unmanaged(a)))
+      ResourceFactoryTExtractor.apply(Applicative[F].point(ResourceT.delay(a)))
   }
 
   import com.thoughtworks.raii.transformers.ResourceFactoryTExtractor.unwrap
