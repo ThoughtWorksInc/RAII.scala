@@ -5,7 +5,7 @@ import java.io.{File, FileInputStream}
 import org.scalatest._
 import com.thoughtworks.raii.resourcetSpec.Exceptions.{CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.resourcetSpec.FakeResource
-import com.thoughtworks.raii.resourcet.{ResourceT, Releaseable}
+import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
 import com.thoughtworks.raii.resourcet._
 import com.thoughtworks.raii.resourcet.ResourceT._
 import scalaz.syntax.all._
@@ -30,7 +30,7 @@ private[raii] object resourcetSpec {
       autoCloseable: => Resource): ResourceT[F, Borrowing[Resource]] = {
     ResourceT(
       Applicative[F].point {
-        new Releaseable[F, Borrowing[Resource]] {
+        new Releasable[F, Borrowing[Resource]] {
           override val value: this.type Owned Resource = this own autoCloseable
 
           override def releaseDependencies: F[Unit] = ().point[F]

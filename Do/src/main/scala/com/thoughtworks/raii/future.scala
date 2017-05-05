@@ -5,7 +5,7 @@ import java.util.concurrent.ExecutorService
 import com.thoughtworks.raii
 import com.thoughtworks.raii.ownership._
 import com.thoughtworks.raii.ownership.implicits._
-import com.thoughtworks.raii.resourcet.{ResourceT, Releaseable}
+import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
 import com.thoughtworks.tryt.TryT
 
 import scala.concurrent.ExecutionContext
@@ -78,7 +78,7 @@ object future {
       DoExtractor.doParallelApplicative
 
     /** @template */
-    type AsyncReleasable[A] = Releaseable[Future, A]
+    type AsyncReleasable[A] = Releasable[Future, A]
 
     def apply[A](run: Future[AsyncReleasable[Try[A]]]): Do[A] = {
       DoExtractor(TryT[RAIIFuture, A](ResourceT(run)))
@@ -97,7 +97,7 @@ object future {
     def scoped[A <: AutoCloseable](task: Task[A]): Do[Scoped[A]] = {
       Do(
         task.get.map { either =>
-          Releaseable.independent(
+          Releasable.independent(
             value = fromDisjunction(either).map(this.own),
             releaseValue = {
               either match {
@@ -123,7 +123,7 @@ object future {
     def delay[A](task: Task[A]): Do[A] = {
       Do(
         task.get.map { either =>
-          Releaseable.now[Future, Try[A]](fromDisjunction(either))
+          Releasable.now[Future, Try[A]](fromDisjunction(either))
         }
       )
     }
