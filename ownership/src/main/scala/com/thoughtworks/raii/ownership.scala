@@ -27,8 +27,7 @@ import scala.language.implicitConversions
   */
 object ownership {
   private[ownership] trait OpacityTypes {
-    type Owned[+Owner <: Singleton, +A] <: Scoped[A]
-    type Scoped[+A] <: Borrowing[A]
+    type Owned[-Owner <: Singleton, +A] <: Borrowing[A]
     type GarbageCollectable[+A] <: Borrowing[A]
     type Borrowing[+A] <: A
     private[ownership] def own[Owner <: Singleton, A](a: A): Owner Owned A
@@ -37,8 +36,7 @@ object ownership {
 
   @inline
   private[ownership] val opacityTypes: OpacityTypes = new OpacityTypes {
-    override type Owned[+Owner <: Singleton, +A] = A
-    override type Scoped[+A] = A
+    override type Owned[-Owner <: Singleton, +A] = A
     override type GarbageCollectable[+A] = A
     override type Borrowing[+A] = A
     @inline override def own[Owner <: Singleton, A](a: A): A = a
@@ -65,13 +63,13 @@ object ownership {
     * }
     * }}}
     */
-  type Scoped[+A] = opacityTypes.Scoped[A]
+  type Scoped[+A] = Nothing Owned A
 
   /** A [[Scoped]] resource managed by `Owner`.
     *
     * It's `Owner`'s responsibility to `close` or `release` the underlying resource when exiting the scope.
     */
-  type Owned[+Owner <: Singleton, +A] = opacityTypes.Owned[Owner, A]
+  type Owned[-Owner <: Singleton, +A] = opacityTypes.Owned[Owner, A]
 
   object Owned {
 
@@ -98,6 +96,7 @@ object ownership {
   }
 
   final class OwnOps[Owner <: Singleton] {
+
     /** Declares ownership between `a` and `Owner`. */
     def own[A](a: A): Owner Owned A = opacityTypes.own(a)
   }
