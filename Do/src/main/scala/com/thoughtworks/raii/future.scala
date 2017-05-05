@@ -5,7 +5,7 @@ import java.util.concurrent.ExecutorService
 import com.thoughtworks.raii
 import com.thoughtworks.raii.ownership._
 import com.thoughtworks.raii.ownership.implicits._
-import com.thoughtworks.raii.transformers.{ResourceFactoryT, ResourceT}
+import com.thoughtworks.raii.resourcet.{ResourceT, Releaseable}
 import com.thoughtworks.tryt.TryT
 
 import scala.concurrent.ExecutionContext
@@ -25,7 +25,7 @@ import scalaz.std.`try`.toDisjunction
 object future {
 
   /** @template */
-  private[raii] type RAIIFuture[A] = ResourceFactoryT[Future, A]
+  private[raii] type RAIIFuture[A] = ResourceT[Future, A]
 
   private[raii] trait DoExtractor {
     type Do[A]
@@ -52,10 +52,10 @@ object future {
     override private[raii] def unwrap[F[_], A](doa: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = doa
 
     override def doMonadErrorInstances: MonadError[TryT[RAIIFuture, ?], Throwable] =
-      TryT.tryTMonadError[RAIIFuture](ResourceFactoryT.resourceFactoryTMonad[Future](Future.futureInstance))
+      TryT.tryTMonadError[RAIIFuture](ResourceT.resourceFactoryTMonad[Future](Future.futureInstance))
 
     override def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = {
-      import com.thoughtworks.raii.transformers.ResourceFactoryT.resourceFactoryTParallelApplicative
+      import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTParallelApplicative
       import TryT.tryTParallelApplicative
       import Future.futureParallelApplicativeInstance
       implicitly
@@ -78,14 +78,14 @@ object future {
       DoExtractor.doParallelApplicative
 
     /** @template */
-    type AsyncReleasable[A] = ResourceT[Future, A]
+    type AsyncReleasable[A] = Releaseable[Future, A]
 
     def apply[A](run: Future[AsyncReleasable[Try[A]]]): Do[A] = {
-      DoExtractor(TryT[RAIIFuture, A](ResourceFactoryT(run)))
+      DoExtractor(TryT[RAIIFuture, A](ResourceT(run)))
     }
 
     private[raii] def unwrap[F[_], A](doA: Do[A]): Future[AsyncReleasable[Try[A]]] = {
-      ResourceFactoryT.unwrap(TryT.unwrap(DoExtractor.unwrap(doA)))
+      ResourceT.unwrap(TryT.unwrap(DoExtractor.unwrap(doA)))
     }
 
     def unapply[F[_], A](doA: Do[A]): Some[Future[AsyncReleasable[Try[A]]]] = {
@@ -98,7 +98,7 @@ object future {
     def scoped[A <: AutoCloseable](task: Task[A]): Do[Scoped[A]] = {
       Do(
         task.get.map { either =>
-          new ResourceT[Future, Try[Scoped[A]]] {
+          new Releaseable[Future, Try[Scoped[A]]] {
             override def value: Try[this.type Owned A] = fromDisjunction(either).map(this.own)
 
             override def release(): Future[Unit] = {
@@ -125,7 +125,7 @@ object future {
     def delay[A](task: Task[A]): Do[A] = {
       Do(
         task.get.map { either =>
-          new ResourceT[Future, Try[A]] {
+          new Releaseable[Future, Try[A]] {
             override def value: Try[A] = fromDisjunction(either)
 
             override def release(): Future[Unit] = Future.now(())
@@ -182,7 +182,7 @@ object future {
       */
     def run[A](doA: Do[A])(implicit notScoped: A <:!< Scoped[_]): Task[A] = {
       val future: Future[Throwable \/ A] =
-        ResourceFactoryT.run(ResourceFactoryT.apply(Do.unapply(doA).get)).map(toDisjunction)
+        ResourceT.run(ResourceT.apply(Do.unapply(doA).get)).map(toDisjunction)
       new Task(future)
     }
   }
