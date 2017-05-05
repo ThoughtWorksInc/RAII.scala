@@ -7,6 +7,9 @@ import com.thoughtworks.raii.resourcetSpec.Exceptions.{CanNotCloseResourceTwice,
 import com.thoughtworks.raii.resourcetSpec.FakeResource
 import com.thoughtworks.raii.resourcet.{ResourceT, Releaseable}
 import com.thoughtworks.raii.resourcet._
+import com.thoughtworks.raii.resourcet.ResourceT._
+import scalaz.syntax.all._
+import scalaz.concurrent.Future._
 
 import scalaz.syntax.all._
 import scalaz._
@@ -97,10 +100,6 @@ final class resourcetSpec extends AsyncFreeSpec with Matchers with Inside {
 
   import Exceptions._
 
-  import scalaz.syntax.all._
-  import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTMonad
-  import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTApplicative
-  import scalaz.concurrent.Future._
 
   "must acquire and release" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]

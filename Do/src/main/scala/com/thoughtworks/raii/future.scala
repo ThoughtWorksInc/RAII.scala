@@ -176,8 +176,12 @@ object future {
       */
     def run[A](doA: Do[A])(implicit notScoped: A <:!< Scoped[_]): Task[A] = {
       val future: Future[Throwable \/ A] =
-        ResourceT.run(ResourceT.apply(Do.unapply(doA).get)).map(toDisjunction)
+        ResourceT.run(ResourceT(Do.unwrap(doA))).map(toDisjunction)
       new Task(future)
+    }
+
+    def autoReleaseDependencies[A](doA: Do[A]): Do[A] = {
+      Do(ResourceT.unwrap(ResourceT.autoReleaseDependencies(ResourceT(unwrap(doA)))))
     }
   }
 

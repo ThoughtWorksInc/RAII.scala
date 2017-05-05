@@ -149,6 +149,14 @@ object resourcet {
       }
     }
 
+    final def autoReleaseDependencies[F[_]: Monad, A](resourceT: ResourceT[F, A]): ResourceT[F, A] = {
+      apply(unwrap(resourceT).flatMap { releasable: Releaseable[F, A] =>
+        releasable.releaseDependencies.map { _ =>
+          Releaseable.independent(releasable.value, releasable.releaseValue)
+        }
+      })
+    }
+
     private[raii] final def foreach[F[_], A](resourceFactoryT: ResourceT[F, A],
                                              f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
       unwrap(resourceFactoryT)
