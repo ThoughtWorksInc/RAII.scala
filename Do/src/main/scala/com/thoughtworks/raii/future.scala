@@ -5,7 +5,7 @@ import java.util.concurrent.ExecutorService
 import com.thoughtworks.raii
 import com.thoughtworks.raii.ownership._
 import com.thoughtworks.raii.ownership.implicits._
-import com.thoughtworks.raii.resourcet.{ResourceT, Releaseable}
+import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
 import com.thoughtworks.tryt.TryT
 
 import scala.concurrent.ExecutionContext
@@ -78,7 +78,7 @@ object future {
       DoExtractor.doParallelApplicative
 
     /** @template */
-    type AsyncReleasable[A] = Releaseable[Future, A]
+    type AsyncReleasable[A] = Releasable[Future, A]
 
     def apply[A](run: Future[AsyncReleasable[Try[A]]]): Do[A] = {
       DoExtractor(TryT[RAIIFuture, A](ResourceT(run)))
@@ -92,24 +92,22 @@ object future {
       Some(unwrap(doA))
     }
 
-    /** @template */
-    //private[raii] type Do[A] = TryT[RAIIFuture, A]
+    private val UnitFuture = Future.now(())
 
     def scoped[A <: AutoCloseable](task: Task[A]): Do[Scoped[A]] = {
       Do(
         task.get.map { either =>
-          new Releaseable[Future, Try[Scoped[A]]] {
-            override def value: Try[this.type Owned A] = fromDisjunction(either).map(this.own)
-
-            override def release(): Future[Unit] = {
+          Releasable.independent(
+            value = fromDisjunction(either).map(this.own),
+            releaseValue = {
               either match {
                 case \/-(closeable) =>
                   Future.delay(closeable.close())
                 case -\/(_) =>
-                  Future.now(())
+                  UnitFuture
               }
             }
-          }
+          )
         }
       )
     }
@@ -125,11 +123,7 @@ object future {
     def delay[A](task: Task[A]): Do[A] = {
       Do(
         task.get.map { either =>
-          new Releaseable[Future, Try[A]] {
-            override def value: Try[A] = fromDisjunction(either)
-
-            override def release(): Future[Unit] = Future.now(())
-          }
+          Releasable.now[Future, Try[A]](fromDisjunction(either))
         }
       )
     }
@@ -182,8 +176,12 @@ object future {
       */
     def run[A](doA: Do[A])(implicit notScoped: A <:!< Scoped[_]): Task[A] = {
       val future: Future[Throwable \/ A] =
-        ResourceT.run(ResourceT.apply(Do.unapply(doA).get)).map(toDisjunction)
+        ResourceT.run(ResourceT(Do.unwrap(doA))).map(toDisjunction)
       new Task(future)
+    }
+
+    def autoReleaseDependencies[A](doA: Do[A]): Do[A] = {
+      Do(ResourceT.unwrap(ResourceT.autoReleaseDependencies(ResourceT(unwrap(doA)))))
     }
   }
 
