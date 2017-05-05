@@ -18,7 +18,8 @@ object Shared {
 
   private[raii] sealed trait State[A]
   private[raii] final case class Closed[A]() extends State[A]
-  private[raii] final case class Opening[A](handlers: Queue[Releaseable[Future, A] => Trampoline[Unit]]) extends State[A]
+  private[raii] final case class Opening[A](handlers: Queue[Releaseable[Future, A] => Trampoline[Unit]])
+      extends State[A]
   private[raii] final case class Open[A](data: Releaseable[Future, A], count: Int) extends State[A]
 
   implicit final class SharedOps[A](raii: ResourceT[Future, A]) {
@@ -40,14 +41,18 @@ object Shared {
     private def sharedCloseable = this
     override def value: A = state.get().asInstanceOf[Open[A]].data.value
 
-    override def release(): Future[Unit] = Future.Suspend { () =>
+    override def release: Future[Unit] = releaseDependencies
+
+    override def releaseValue: Future[Unit] = Future.now(())
+
+    override def releaseDependencies: Future[Unit] = Future.Suspend { () =>
       @tailrec
       def retry(): Future[Unit] = {
         state.get() match {
           case oldState @ Open(data, count) =>
             if (count == 1) {
               if (state.compareAndSet(oldState, Closed())) {
-                data.release()
+                data.release
               } else {
                 retry()
               }

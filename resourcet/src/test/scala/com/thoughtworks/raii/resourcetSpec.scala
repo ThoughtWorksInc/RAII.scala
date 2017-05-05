@@ -30,7 +30,10 @@ private[raii] object resourcetSpec {
         new Releaseable[F, Borrowing[Resource]] {
           override val value: this.type Owned Resource = this own autoCloseable
 
-          override def release(): F[Unit] = Applicative[F].point(value.close())
+          override def releaseDependencies: F[Unit] = ().point[F]
+
+          override def releaseValue: F[Unit] = Applicative[F].point(value.close())
+          override def release: F[Unit] = releaseValue
         }
       }
     )
@@ -95,7 +98,7 @@ final class resourcetSpec extends AsyncFreeSpec with Matchers with Inside {
   import Exceptions._
 
   import scalaz.syntax.all._
-  import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTMonadError
+  import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTMonad
   import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTApplicative
   import scalaz.concurrent.Future._
 

@@ -92,24 +92,22 @@ object future {
       Some(unwrap(doA))
     }
 
-    /** @template */
-    //private[raii] type Do[A] = TryT[RAIIFuture, A]
+    private val UnitFuture = Future.now(())
 
     def scoped[A <: AutoCloseable](task: Task[A]): Do[Scoped[A]] = {
       Do(
         task.get.map { either =>
-          new Releaseable[Future, Try[Scoped[A]]] {
-            override def value: Try[this.type Owned A] = fromDisjunction(either).map(this.own)
-
-            override def release(): Future[Unit] = {
+          Releaseable.independent(
+            value = fromDisjunction(either).map(this.own),
+            releaseValue = {
               either match {
                 case \/-(closeable) =>
                   Future.delay(closeable.close())
                 case -\/(_) =>
-                  Future.now(())
+                  UnitFuture
               }
             }
-          }
+          )
         }
       )
     }
@@ -125,11 +123,7 @@ object future {
     def delay[A](task: Task[A]): Do[A] = {
       Do(
         task.get.map { either =>
-          new Releaseable[Future, Try[A]] {
-            override def value: Try[A] = fromDisjunction(either)
-
-            override def release(): Future[Unit] = Future.now(())
-          }
+          Releaseable.now[Future, Try[A]](fromDisjunction(either))
         }
       )
     }
