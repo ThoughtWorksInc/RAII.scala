@@ -11,7 +11,7 @@ import org.scalatest.{FreeSpec, Matchers}
   */
 final class ownershipSpec extends FreeSpec with Matchers {
 
-  final class MyOwner(gift: Nothing Owned Writer) extends Closeable {
+  final class MyOwner(gift: Singleton Owned Writer) extends Closeable {
     val myWriter: this.type Owned Writer = gift
 
     def foo(mine: this.type Owned Writer): Unit = {}
