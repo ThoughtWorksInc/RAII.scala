@@ -2,11 +2,11 @@ package com.thoughtworks.raii
 
 import com.thoughtworks.raii.resourcetSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.resourcetSpec._
-import com.thoughtworks.raii.Shared.SharedOps
+import com.thoughtworks.raii.shared.SharedOps
 import com.thoughtworks.raii.ownership.Borrowing
 import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
-import com.thoughtworks.raii.resourcet.ResourceT.{resourceFactoryTMonad, using}
+import com.thoughtworks.raii.resourcet.ResourceT._
 import com.thoughtworks.tryt.TryT.{tryTBindRec, tryTFunctor, tryTParallelApplicative}
 import com.thoughtworks.tryt.{TryT, TryTParallelApplicative}
 
@@ -24,9 +24,9 @@ import scala.util.control.NoStackTrace
 /**
   * Created by 张志豪 on 2017/4/6.
   */
-object SharedSpec {
+object sharedSpec {
 
-  def raiiFutureMonad: Monad[RAIIFuture] = ResourceT.resourceFactoryTMonad[Future]
+  def raiiFutureMonad: Monad[RAIIFuture] = ResourceT.resourceTMonad[Future]
 
   type RAIIFuture[A] = ResourceT[Future, A]
 
@@ -111,8 +111,8 @@ object SharedSpec {
 
 }
 
-class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
-  import SharedSpec._
+class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
+  import sharedSpec._
   "when working with scalaz's Future, it must asynchronously acquire and release" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
@@ -167,14 +167,14 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
     allOpenedResources.keys shouldNot contain("0")
 
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTMonad
+    import com.thoughtworks.raii.resourcet.ResourceT.resourceTMonad
 
-    //def resourceMonad = resourceFactoryTMonad[Future](Future.futureInstance)
+    //def resourceMonad = resourceTMonad[Future](Future.futureInstance)
     //mr.flatMap(???)
 
     val usingResource: ResourceT[Future, mutable.Buffer[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).bind(mr) { r1 =>
-        resourceFactoryTMonad[Future](Future.futureInstance).map(mr) { r2 =>
+      resourceTMonad[Future](Future.futureInstance).bind(mr) { r1 =>
+        resourceTMonad[Future](Future.futureInstance).map(mr) { r2 =>
           allOpenedResources.keys should contain("0")
           events += "using 0"
         }
@@ -207,10 +207,10 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val sharedResource: ResourceT[Future, String] =
       ResourceT(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTMonad
+    import com.thoughtworks.raii.resourcet.ResourceT.resourceTMonad
 
     val pf: RAIITask[String] = TryT[ResourceT[Future, ?], String](
-      resourceFactoryTMonad[Future](Future.futureInstance).map(sharedResource) { Success(_) }
+      resourceTMonad[Future](Future.futureInstance).map(sharedResource) { Success(_) }
       //sharedResource.map(Success(_))
     )
 
@@ -219,7 +219,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     import com.thoughtworks.tryt.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTParallelApplicative
+    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[Future, ?]].map(parallelPf) { a =>
@@ -253,10 +253,10 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
     val pf1: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
 
     val pf2: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -267,7 +267,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     import com.thoughtworks.tryt.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTParallelApplicative
+    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[Future, ?]].apply2(parallelPf1, parallelPf2) { (a: String, b: String) =>
@@ -301,7 +301,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
     val pf1: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(sharedResource) { Try(_) }
 
     val trypf1 = TryT(pf1)
 
@@ -311,7 +311,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     import com.thoughtworks.tryt.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTParallelApplicative
+    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[Future, ?]].apply2(parallelPf1, parallelPf2) { (a: String, b: String) =>
@@ -347,13 +347,13 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "1").apply()).shared
 
     val pf1: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
 
     val pf2: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
 
     val pf3: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -366,7 +366,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     import com.thoughtworks.tryt.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTParallelApplicative
+    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {
@@ -405,13 +405,13 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "1").apply()).shared
 
     val pf1: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
 
     val pf2: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
 
     val pf3: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -424,7 +424,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     import com.thoughtworks.tryt.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTParallelApplicative
+    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {
@@ -485,13 +485,13 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
         .shared
 
     val pf1: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource0) { Try(_) }
 
     val pf2: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
 
     val pf3: ResourceT[Future, Try[String]] =
-      resourceFactoryTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
+      resourceTMonad[Future](Future.futureInstance).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -504,7 +504,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
     import com.thoughtworks.tryt.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTParallelApplicative
+    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {

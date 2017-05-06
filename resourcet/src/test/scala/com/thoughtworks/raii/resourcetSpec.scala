@@ -16,7 +16,6 @@ import scala.language.higherKinds
 import scalaz.effect.IO
 import scalaz.effect.IOInstances
 import ownership._
-import ownership.implicits._
 
 private[raii] object resourcetSpec {
 
@@ -95,8 +94,7 @@ final class resourcetSpec extends AsyncFreeSpec with Matchers with Inside {
   import Exceptions._
 
   import scalaz.syntax.all._
-  import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTMonadError
-  import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTApplicative
+  import com.thoughtworks.raii.resourcet.ResourceT._
   import scalaz.concurrent.Future._
 
   "must acquire and release" in {

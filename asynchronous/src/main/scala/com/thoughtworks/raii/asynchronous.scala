@@ -1,10 +1,6 @@
 package com.thoughtworks.raii
 
-import java.util.concurrent.ExecutorService
-
-import com.thoughtworks.raii
 import com.thoughtworks.raii.ownership._
-import com.thoughtworks.raii.ownership.implicits._
 import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
 import com.thoughtworks.tryt.TryT
 
@@ -12,30 +8,29 @@ import scala.concurrent.ExecutionContext
 import scalaz.{-\/, @@, Applicative, ContT, Monad, MonadError, Semigroup, \/, \/-}
 import scalaz.concurrent.{Future, Task}
 import scala.language.higherKinds
-import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success, Try}
 import scalaz.Free.Trampoline
 import scalaz.Tags.Parallel
-import scalaz.std.`try`.fromDisjunction
-import scalaz.std.`try`.toDisjunction
+import scalaz.std.`try`
+import com.thoughtworks.raii.resourcet.ResourceT._
+import TryT._
+import com.thoughtworks.raii.shared._
+import shapeless.<:!<
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-object future {
+object asynchronous {
 
   /** @template */
   private[raii] type RAIIFuture[A] = ResourceT[Future, A]
 
-  private[raii] trait DoExtractor {
+  private[raii] trait OpacityTypes {
     type Do[A]
 
-    def apply[A](run: TryT[RAIIFuture, A]): Do[A]
+    def fromTryT[A](run: TryT[ResourceT[Future,?], A]): Do[A]
 
-    private[raii] def unwrap[F[_], A](doA: Do[A]): TryT[RAIIFuture, A]
-
-    final def unapply[A](doA: Do[A]): Some[TryT[RAIIFuture, A]] =
-      Some(unwrap(doA))
+    private[raii] def toTryT[F[_], A](doA: Do[A]): TryT[RAIIFuture, A]
 
     //TODO: BindRec
     implicit def doMonadErrorInstances: MonadError[Do, Throwable]
@@ -44,25 +39,25 @@ object future {
         implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]]
   }
 
-  private[future] val DoExtractor: DoExtractor = new DoExtractor {
+  private[asynchronous] val opacityTypes: OpacityTypes = new OpacityTypes {
     override type Do[A] = TryT[RAIIFuture, A]
 
-    override def apply[A](run: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = run
+    override def fromTryT[A](run: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = run
 
-    override private[raii] def unwrap[F[_], A](doa: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = doa
+    override private[raii] def toTryT[F[_], A](doa: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = doa
 
-    override def doMonadErrorInstances: MonadError[TryT[RAIIFuture, ?], Throwable] =
-      TryT.tryTMonadError[RAIIFuture](ResourceT.resourceFactoryTMonad[Future](Future.futureInstance))
+    override def doMonadErrorInstances: MonadError[TryT[RAIIFuture, ?], Throwable] = {
+      TryT.tryTMonadError[RAIIFuture](ResourceT.resourceTMonad[Future](Future.futureInstance))
+    }
 
     override def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = {
-      import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTParallelApplicative
-      import TryT.tryTParallelApplicative
-      import Future.futureParallelApplicativeInstance
+      import Future._
       implicitly
     }
   }
 
-  type Do[A] = DoExtractor.Do[A]
+  /** @template */
+  type Do[A] = opacityTypes.Do[A]
 
   // DoFunctions is a workaround for type alias `Covariant`,
   // because the abstract type cannot defined in object.
@@ -72,23 +67,21 @@ object future {
 
   object Do extends DoFunctions {
 
-    implicit def doMonadErrorInstances: MonadError[Do, Throwable] = DoExtractor.doMonadErrorInstances
+    implicit def doMonadErrorInstances: MonadError[Do, Throwable] = opacityTypes.doMonadErrorInstances
     implicit def doParallelApplicative(
         implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]] =
-      DoExtractor.doParallelApplicative
+      opacityTypes.doParallelApplicative
 
-    /** @template */
-    type AsyncReleasable[A] = Releasable[Future, A]
-
-    def apply[A](run: Future[AsyncReleasable[Try[A]]]): Do[A] = {
-      DoExtractor(TryT[RAIIFuture, A](ResourceT(run)))
+    def apply[A](run: Future[Releasable[Future, Try[A]]]): Do[A] = {
+      opacityTypes.fromTryT(TryT[RAIIFuture, A](ResourceT(run)))
     }
 
-    private[raii] def unwrap[F[_], A](doA: Do[A]): Future[AsyncReleasable[Try[A]]] = {
-      ResourceT.unwrap(TryT.unwrap(DoExtractor.unwrap(doA)))
+    private def unwrap[F[_], A](doA: Do[A]): Future[Releasable[Future, Try[A]]] = {
+      val ResourceT(future) = TryT.unwrap(opacityTypes.toTryT(doA))
+      future
     }
 
-    def unapply[F[_], A](doA: Do[A]): Some[Future[AsyncReleasable[Try[A]]]] = {
+    def unapply[F[_], A](doA: Do[A]): Some[Future[Releasable[Future, Try[A]]]] = {
       Some(unwrap(doA))
     }
 
@@ -96,7 +89,7 @@ object future {
       Do(
         task.get.map { either =>
           new Releasable[Future, Try[Scoped[A]]] {
-            override def value: Try[this.type Owned A] = fromDisjunction(either).map(this.own)
+            override def value: Try[this.type Owned A] = `try`.fromDisjunction(either).map(this.own)
 
             override def release(): Future[Unit] = {
               either match {
@@ -122,7 +115,7 @@ object future {
     def delay[A](task: Task[A]): Do[A] = {
       Do(
         task.get.map { either =>
-          Releasable.now[Future, Try[A]](fromDisjunction(either))
+          Releasable.now[Future, Try[A]](`try`.fromDisjunction(either))
         }
       )
     }
@@ -159,8 +152,6 @@ object future {
       })
     }
 
-    import shapeless.<:!<
-
     /**
       * Returns a `Task` of `A`, which will open `A` and release all resources during opening `A`.
       *
@@ -175,21 +166,32 @@ object future {
       */
     def run[A](doA: Do[A])(implicit notScoped: A <:!< Scoped[_]): Task[A] = {
       val future: Future[Throwable \/ A] =
-        ResourceT.run(ResourceT(Do.unwrap(doA))).map(toDisjunction)
+        ResourceT.run(ResourceT(Do.unwrap(doA))).map(`try`.toDisjunction)
       new Task(future)
     }
 
     def releaseFlatMap[A, B](doA: Do[A])(f: A => Do[B]): Do[B] = {
-      Do(ResourceT.unwrap(ResourceT.releaseFlatMap(ResourceT(Do.unwrap(doA))) {
+      val resourceA = ResourceT(Do.unwrap(doA))
+      val resourceB = ResourceT.releaseFlatMap[Future, Try[A], Try[B]](resourceA) {
         case Failure(e) =>
           ResourceT(Future.now(Releasable.now(Failure(e))))
         case Success(a) =>
           ResourceT(Do.unwrap(f(a)))
-      }))
+      }
+      val ResourceT(future) = resourceB
+      Do(future)
     }
 
     def releaseMap[A, B](doA: Do[A])(f: A => B): Do[B] = {
-      Do(ResourceT.unwrap(ResourceT.releaseMap(ResourceT(Do.unwrap(doA)))(_.map(f))))
+      val resourceA = ResourceT(Do.unwrap(doA))
+      val resourceB = ResourceT.releaseMap(resourceA)(_.map(f))
+      val ResourceT(future) = resourceB
+      Do(future)
+    }
+
+    def shared[A](doA: Do[A]): Do[A] = {
+      val sharedFuture: RAIIFuture[Try[A]] = TryT.unwrap(opacityTypes.toTryT(doA)).shared
+      opacityTypes.fromTryT(TryT(sharedFuture))
     }
   }
 

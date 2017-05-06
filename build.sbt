@@ -6,10 +6,10 @@ lazy val resourcetJVM = resourcet.jvm.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val resourcetJS = resourcet.js.addSbtFiles(file("../build.sbt.shared"))
 
-lazy val Shared =
+lazy val shared =
   project.dependsOn(resourcetJVM, resourcetJVM % "test->test")
 
-lazy val Do = project.dependsOn(Shared, resourcetJVM, ownershipJVM)
+lazy val asynchronous = project.dependsOn(shared, resourcetJVM, ownershipJVM)
 
 lazy val ownership = crossProject.crossType(CrossType.Pure)
 
@@ -21,7 +21,7 @@ lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
     UnidocKeys.unidocProjectFilter in ScalaUnidoc in UnidocKeys.unidoc := {
-      inProjects(resourcetJVM, Shared, Do)
+      inDependencies(asynchronous, transitive = true, includeRoot = true)
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
     scalacOptions += "-Xexperimental"
