@@ -14,18 +14,18 @@ import scalaz.std.iterable._
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-object Shared {
+object shared {
 
-  private[raii] sealed trait State[A]
-  private[raii] final case class Closed[A]() extends State[A]
-  private[raii] final case class Opening[A](handlers: Queue[Releasable[Future, A] => Trampoline[Unit]])
+  private[shared] sealed trait State[A]
+  private[shared] final case class Closed[A]() extends State[A]
+  private[shared] final case class Opening[A](handlers: Queue[Releasable[Future, A] => Trampoline[Unit]])
       extends State[A]
-  private[raii] final case class Open[A](data: Releasable[Future, A], count: Int) extends State[A]
+  private[shared] final case class Open[A](data: Releasable[Future, A], count: Int) extends State[A]
 
   implicit final class SharedOps[A](raii: ResourceT[Future, A]) {
 
     def shared: ResourceT[Future, A] = {
-      val sharedReference = new Shared(raii)
+      val sharedReference = new SharedStateMachine(raii)
       ResourceT[Future, A](
         Future.Async { (handler: Releasable[Future, A] => Trampoline[Unit]) =>
           sharedReference.acquire(handler)
@@ -35,7 +35,7 @@ object Shared {
 
   }
 
-  private[raii] final class Shared[A](underlying: ResourceT[Future, A])
+  private[shared] final class SharedStateMachine[A](underlying: ResourceT[Future, A])
       extends AtomicReference[State[A]](Closed())
       with Releasable[Future, A] {
     private def sharedCloseable = this
@@ -87,11 +87,12 @@ object Shared {
     }
 
     @tailrec
-    private[raii] def acquire(handler: Releasable[Future, A] => Trampoline[Unit]): Unit = {
+    private[shared] def acquire(handler: Releasable[Future, A] => Trampoline[Unit]): Unit = {
       state.get() match {
         case oldState @ Closed() =>
           if (state.compareAndSet(oldState, Opening(Queue(handler)))) {
-            ResourceT.unwrap[Future, A](underlying).unsafePerformListen(complete)
+            val ResourceT(future) = underlying
+            future.unsafePerformListen(complete)
           } else {
             acquire(handler)
           }

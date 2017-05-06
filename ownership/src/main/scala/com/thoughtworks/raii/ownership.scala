@@ -104,18 +104,17 @@ object ownership {
   /** Marks `a` as garbage collectable. */
   def garbageCollectable[A](a: A): GarbageCollectable[A] = opacityTypes.garbageCollectable(a)
 
-  object implicits {
-    implicit def toOwnOps(owner: AnyRef): OwnOps[owner.type] = new OwnOps[owner.type]
+  implicit def toOwnOps(owner: AnyRef): OwnOps[owner.type] = new OwnOps[owner.type]
 
-    implicit final class MoveOps[OldOwner <: Singleton, A](owned: OldOwner Owned A) {
-      def move[NewOwner <: Singleton](implicit move: Move[OldOwner, A]): NewOwner Owned A = {
-        move(owned)
-      }
-    }
-    implicit final class DuplicateOps[A](borrowing: Borrowing[A]) {
-      def duplicate[NewOwner <: Singleton](implicit duplicate: Duplicate[A]): NewOwner Owned A = {
-        duplicate(borrowing)
-      }
+  implicit final class MoveOps[OldOwner <: Singleton, A](owned: OldOwner Owned A) {
+    def move[NewOwner <: Singleton](implicit move: Move[OldOwner, A]): NewOwner Owned A = {
+      move(owned)
     }
   }
+  implicit final class DuplicateOps[A](borrowing: Borrowing[A]) {
+    def duplicate[NewOwner <: Singleton](implicit duplicate: Duplicate[A]): NewOwner Owned A = {
+      duplicate(borrowing)
+    }
+  }
+
 }

@@ -9,31 +9,32 @@ import scalaz.syntax.all._
 
 object resourcet {
 
-  private[resourcet] val ResourceFactoryTExtractor: ResourceFactoryTExtractor = new ResourceFactoryTExtractor {
+  private[resourcet] val opacityTypes: OpacityTypes = new OpacityTypes {
     override type ResourceT[F[_], A] = F[Releasable[F, A]]
 
     override def apply[F[_], A](run: F[Releasable[F, A]]): ResourceT[F, A] = run
 
-    override private[raii] def unwrap[F[_], A](resourceFactoryT: ResourceT[F, A]): F[Releasable[F, A]] =
-      resourceFactoryT
+    override def unwrap[F[_], A](resourceT: ResourceT[F, A]): F[Releasable[F, A]] =
+      resourceT
   }
 
-  type ResourceT[F[_], A] = ResourceFactoryTExtractor.ResourceT[F, A]
-
+  /** @template */
+  type ResourceT[F[_], A] = opacityTypes.ResourceT[F, A]
+  import opacityTypes._
   trait Releasable[F[_], +A] {
     def value: A
 
-    /** Releases all the native resources [[ResourceT.unwrap]]d during creating this [[Releasable]].
+    /** Releases [[value]] and all resource dependencies during creating [[value]].
       *
       * @note After [[release]], [[value]] should not be used if:
       *  - [[value]] is a scoped native resource,
-      *    e.g. a [[com.thoughtworks.raii.sde.raii#scoped scoped]] `AutoCloseable`,
+      *    e.g. a [[com.thoughtworks.raii.asynchronous.Do.scoped scoped]] `AutoCloseable`,
       *  - or, [[value]] internally uses some scoped native resources.
       */
     def release(): F[Unit]
   }
 
-  object Releasable {
+  private[raii] object Releasable {
     @inline
     def now[F[_]: Applicative, A](value: A): Releasable[F, A] = {
       val value0 = value
@@ -46,30 +47,25 @@ object resourcet {
     }
   }
 
-  private[raii] trait ResourceFactoryTExtractor {
+  private[raii] trait OpacityTypes {
     type ResourceT[F[_], A]
 
     def apply[F[_], A](run: F[Releasable[F, A]]): ResourceT[F, A]
 
-    private[raii] def unwrap[F[_], A](resourceFactoryT: ResourceT[F, A]): F[Releasable[F, A]]
+    def unwrap[F[_], A](resourceT: ResourceT[F, A]): F[Releasable[F, A]]
 
-    final def unapply[F[_], A](resourceFactoryT: ResourceT[F, A]): Some[F[Releasable[F, A]]] =
-      Some(unwrap(resourceFactoryT))
   }
 
   object ResourceT extends ResourceFactoryTInstances0 {
 
-    def apply[F[_], A](run: F[Releasable[F, A]]): ResourceT[F, A] = ResourceFactoryTExtractor.apply(run)
+    def apply[F[_], A](run: F[Releasable[F, A]]): ResourceT[F, A] = opacityTypes.apply(run)
 
-    private[raii] def unwrap[F[_], A](resourceFactoryT: ResourceT[F, A]): F[Releasable[F, A]] =
-      ResourceFactoryTExtractor.unwrap(resourceFactoryT)
+    def unapply[F[_], A](resourceT: ResourceT[F, A]): Some[F[Releasable[F, A]]] =
+      Some(unwrap(resourceT))
 
-    def unapply[F[_], A](resourceFactoryT: ResourceT[F, A]): Some[F[Releasable[F, A]]] =
-      ResourceFactoryTExtractor.unapply(resourceFactoryT)
-
-    private[raii] final def using[F[_], A, B](resourceFactoryT: ResourceT[F, A], f: A => F[B])(
+    private[raii] final def using[F[_], A, B](resourceT: ResourceT[F, A], f: A => F[B])(
         implicit monad: Bind[F]): F[B] = {
-      unwrap(resourceFactoryT).flatMap { fa =>
+      unwrap(resourceT).flatMap { fa =>
         f(fa.value).flatMap { a: B =>
           fa.release().map { _ =>
             a
@@ -82,8 +78,8 @@ object resourcet {
       * Return a [Future] which contains content of [Releasable] and [Releasable] will be closed,
       * NOTE: the content of [Releasable] must be JVM resource cause the content will not be closed.
       */
-    final def run[F[_], A](resourceFactoryT: ResourceT[F, A])(implicit monad: Bind[F]): F[A] = {
-      unwrap(resourceFactoryT).flatMap { resource: Releasable[F, A] =>
+    final def run[F[_], A](resourceT: ResourceT[F, A])(implicit monad: Bind[F]): F[A] = {
+      unwrap(resourceT).flatMap { resource: Releasable[F, A] =>
         resource.release.map { _ =>
           resource.value
         }
@@ -91,7 +87,7 @@ object resourcet {
     }
 
     def releaseMap[F[_]: Monad, A, B](fa: ResourceT[F, A])(f: A => B): ResourceT[F, B] = {
-      ResourceFactoryTExtractor.apply(
+      opacityTypes.apply(
         unwrap(fa).flatMap { releasableA =>
           val b = f(releasableA.value)
           releasableA.release().map { _ =>
@@ -108,7 +104,7 @@ object resourcet {
     }
 
     def releaseFlatMap[F[_]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
-      ResourceFactoryTExtractor.apply(
+      opacityTypes.apply(
         for {
           releasableA <- unwrap(fa)
           releasableB <- unwrap(f(releasableA.value))
@@ -124,9 +120,9 @@ object resourcet {
         }
       )
     }
-    private[raii] final def foreach[F[_], A](resourceFactoryT: ResourceT[F, A],
+    private[raii] final def foreach[F[_], A](resourceT: ResourceT[F, A],
                                              f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
-      unwrap(resourceFactoryT)
+      unwrap(resourceT)
         .flatMap { fa =>
           f(fa.value)
           fa.release()
@@ -138,15 +134,15 @@ object resourcet {
       fa.map(_.right[S]).handleError(_.left[A].point[F])
     }
 
-    implicit val resourceFactoryTMonadTrans = new MonadTrans[ResourceT] {
+    implicit val resourceTMonadTrans = new MonadTrans[ResourceT] {
 
       override def liftM[F[_]: Monad, A](fa: F[A]): ResourceT[F, A] =
-        ResourceFactoryTExtractor.apply(fa.map(Releasable.now(_)))
+        opacityTypes.apply(fa.map(Releasable.now(_)))
 
-      override def apply[F[_]: Monad]: Monad[ResourceT[F, ?]] = resourceFactoryTMonad
+      override def apply[F[_]: Monad]: Monad[ResourceT[F, ?]] = resourceTMonad
     }
 
-    implicit def resourceFactoryTParallelApplicative[F[_]](
+    implicit def resourceTParallelApplicative[F[_]](
         implicit F0: Applicative[Lambda[R => F[R] @@ Parallel]]
     ): Applicative[Lambda[R => ResourceT[F, R] @@ Parallel]] = {
       new ResourceFactoryTParallelApplicative[F] {
@@ -157,7 +153,7 @@ object resourcet {
 
   private[raii] sealed abstract class ResourceFactoryTInstances3 {
 
-    implicit def resourceFactoryTApplicative[F[_]: Applicative]: Applicative[ResourceT[F, ?]] =
+    implicit def resourceTApplicative[F[_]: Applicative]: Applicative[ResourceT[F, ?]] =
       new ResourceFactoryTApplicative[F] {
         override private[raii] def typeClass = implicitly
       }
@@ -165,14 +161,14 @@ object resourcet {
 
   private[raii] sealed abstract class ResourceFactoryTInstances2 extends ResourceFactoryTInstances3 {
 
-    implicit def resourceFactoryTMonad[F[_]: Monad]: Monad[ResourceT[F, ?]] = new ResourceFactoryTMonad[F] {
+    implicit def resourceTMonad[F[_]: Monad]: Monad[ResourceT[F, ?]] = new ResourceFactoryTMonad[F] {
       private[raii] override def typeClass = implicitly
     }
   }
 
   private[raii] sealed abstract class ResourceFactoryTInstances1 extends ResourceFactoryTInstances2 {
 
-    implicit def resourceFactoryTNondeterminism[F[_]](
+    implicit def resourceTNondeterminism[F[_]](
         implicit F0: Nondeterminism[F]): Nondeterminism[ResourceT[F, ?]] =
       new ResourceFactoryTNondeterminism[F] {
         private[raii] override def typeClass = implicitly
@@ -181,7 +177,7 @@ object resourcet {
 
   private[raii] sealed abstract class ResourceFactoryTInstances0 extends ResourceFactoryTInstances1 {
 
-    implicit def resourceFactoryTMonadError[F[_], S](implicit F0: MonadError[F, S]): MonadError[ResourceT[F, ?], S] =
+    implicit def resourceTMonadError[F[_], S](implicit F0: MonadError[F, S]): MonadError[ResourceT[F, ?], S] =
       new ResourceFactoryTMonadError[F, S] {
         private[raii] override def typeClass = implicitly
       }
@@ -191,17 +187,17 @@ object resourcet {
     private[raii] implicit def typeClass: Applicative[F]
 
     override def point[A](a: => A): ResourceT[F, A] =
-      ResourceFactoryTExtractor.apply(Applicative[F].point(Releasable.now(a)))
+      opacityTypes.apply(Applicative[F].point(Releasable.now(a)))
   }
 
-  import com.thoughtworks.raii.resourcet.ResourceFactoryTExtractor.unwrap
+  import com.thoughtworks.raii.resourcet.opacityTypes.unwrap
 
   private[raii] trait ResourceFactoryTApplicative[F[_]]
       extends Applicative[ResourceT[F, ?]]
       with ResourceFactoryTPoint[F] {
 
     override def ap[A, B](fa: => ResourceT[F, A])(f: => ResourceT[F, (A) => B]): ResourceT[F, B] = {
-      ResourceFactoryTExtractor.apply(
+      opacityTypes.apply(
         Applicative[F].apply2(unwrap(fa), unwrap(f)) { (releasableA, releasableF) =>
           new Releasable[F, B] {
             override val value: B = releasableF.value(releasableA.value)
@@ -232,14 +228,14 @@ object resourcet {
               override def release(): F[Unit] = Parallel.unwrap(typeClass.point(()))
             }
           ))
-        ResourceFactoryTExtractor.apply(fa)
+        opacityTypes.apply(fa)
       }: ResourceT[F, A])
     }
 
     override def ap[A, B](fa: => ResourceT[F, A] @@ Parallel)(
         f: => ResourceT[F, A => B] @@ Parallel): ResourceT[F, B] @@ Parallel = {
       Parallel {
-        ResourceFactoryTExtractor.apply(
+        opacityTypes.apply(
           Parallel.unwrap[F[Releasable[F, B]]](
             typeClass.apply2(
               Parallel(unwrap(Parallel.unwrap(fa))),
@@ -267,7 +263,7 @@ object resourcet {
     private[raii] implicit override def typeClass: Monad[F]
 
     override def bind[A, B](fa: ResourceT[F, A])(f: (A) => ResourceT[F, B]): ResourceT[F, B] = {
-      ResourceFactoryTExtractor.apply(
+      opacityTypes.apply(
         for {
           releasableA <- unwrap(fa)
           releasableB <- unwrap(f(releasableA.value))
@@ -291,10 +287,10 @@ object resourcet {
     private[raii] implicit def typeClass: MonadError[F, S]
 
     override def raiseError[A](e: S): ResourceT[F, A] =
-      ResourceFactoryTExtractor.apply(typeClass.raiseError[Releasable[F, A]](e))
+      opacityTypes.apply(typeClass.raiseError[Releasable[F, A]](e))
 
     override def handleError[A](fa: ResourceT[F, A])(f: (S) => ResourceT[F, A]): ResourceT[F, A] = {
-      ResourceFactoryTExtractor.apply(
+      opacityTypes.apply(
         unwrap(fa).handleError { s =>
           unwrap(f(s))
         }
@@ -304,7 +300,7 @@ object resourcet {
     import com.thoughtworks.raii.resourcet.ResourceT.catchError
 
     override def bind[A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
-      ResourceFactoryTExtractor.apply(
+      opacityTypes.apply(
         catchError(unwrap(fa)).flatMap {
           case \/-(releasableA) =>
             catchError(unwrap(f(releasableA.value))).flatMap[Releasable[F, B]] {
@@ -342,13 +338,13 @@ object resourcet {
 
     override def chooseAny[A](head: ResourceT[F, A],
                               tail: Seq[ResourceT[F, A]]): ResourceT[F, (A, Seq[ResourceT[F, A]])] = {
-      ResourceFactoryTExtractor.apply(
+      opacityTypes.apply(
         typeClass.chooseAny(unwrap(head), tail.map(unwrap)).map {
           case (fa, residuals) =>
             new Releasable[F, (A, Seq[ResourceT[F, A]])] {
               override val value: (A, Seq[ResourceT[F, A]]) =
                 (fa.value, residuals.map { residual: F[Releasable[F, A]] =>
-                  ResourceFactoryTExtractor.apply[F, A](residual)
+                  opacityTypes.apply[F, A](residual)
                 })
 
               override def release(): F[Unit] = fa.release()

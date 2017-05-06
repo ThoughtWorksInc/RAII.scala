@@ -3,7 +3,6 @@ package com.thoughtworks.raii
 import java.io.{Closeable, StringWriter, Writer}
 
 import com.thoughtworks.raii.ownership._
-import com.thoughtworks.raii.ownership.implicits._
 import org.scalatest.{FreeSpec, Matchers}
 
 /**
