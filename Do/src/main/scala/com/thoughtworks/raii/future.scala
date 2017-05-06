@@ -92,22 +92,21 @@ object future {
       Some(unwrap(doA))
     }
 
-    private val UnitFuture = Future.now(())
-
     def scoped[A <: AutoCloseable](task: Task[A]): Do[Scoped[A]] = {
       Do(
         task.get.map { either =>
-          Releasable.independent(
-            value = fromDisjunction(either).map(this.own),
-            releaseValue = {
+          new Releasable[Future, Try[Scoped[A]]] {
+            override def value: Try[this.type Owned A] = fromDisjunction(either).map(this.own)
+
+            override def release(): Future[Unit] = {
               either match {
                 case \/-(closeable) =>
                   Future.delay(closeable.close())
                 case -\/(_) =>
-                  UnitFuture
+                  Future.now(())
               }
             }
-          )
+          }
         }
       )
     }
@@ -180,8 +179,17 @@ object future {
       new Task(future)
     }
 
-    def autoReleaseDependencies[A](doA: Do[A]): Do[A] = {
-      Do(ResourceT.unwrap(ResourceT.autoReleaseDependencies(ResourceT(unwrap(doA)))))
+    def releaseFlatMap[A, B](doA: Do[A])(f: A => Do[B]): Do[B] = {
+      Do(ResourceT.unwrap(ResourceT.releaseFlatMap(ResourceT(Do.unwrap(doA))) {
+        case Failure(e) =>
+          ResourceT(Future.now(Releasable.now(Failure(e))))
+        case Success(a) =>
+          ResourceT(Do.unwrap(f(a)))
+      }))
+    }
+
+    def releaseMap[A, B](doA: Do[A])(f: A => B): Do[B] = {
+      Do(ResourceT.unwrap(ResourceT.releaseMap(ResourceT(Do.unwrap(doA)))(_.map(f))))
     }
   }
 
