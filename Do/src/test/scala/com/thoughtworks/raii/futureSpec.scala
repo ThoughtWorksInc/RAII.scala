@@ -17,11 +17,11 @@ import com.thoughtworks.raii.future.Do._
 final class futureSpec extends FreeSpec with Matchers {
 
   "Do.run must not compile for scoped resource" in {
-    "Do.run(scoped(new StringWriter))" shouldNot typeCheck
+    "Do.run(Do.scoped(new StringWriter))" shouldNot typeCheck
   }
 
   "Do.run must not compile for garbage collectable resource" in {
-    "Do.run(delay('foo))" should compile
+    "Do.run(Do.delay('foo))" should compile
   }
 
   "Given a scoped resource" - {
