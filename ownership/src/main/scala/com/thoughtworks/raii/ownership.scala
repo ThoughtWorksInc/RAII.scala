@@ -7,7 +7,6 @@ import scala.language.implicitConversions
   *
   * @example {{{
   * import com.thoughtworks.raii.ownership._
-  * import com.thoughtworks.raii.ownership.implicits._
   *
   * class TheOwner extends AutoCloseable {
   *   private val myStream: this.type Owned InputStream = this.own(new FileInputStream("foo.txt"))
