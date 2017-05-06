@@ -7,9 +7,6 @@ import com.thoughtworks.raii.resourcetSpec.Exceptions.{CanNotCloseResourceTwice,
 import com.thoughtworks.raii.resourcetSpec.FakeResource
 import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
 import com.thoughtworks.raii.resourcet._
-import com.thoughtworks.raii.resourcet.ResourceT._
-import scalaz.syntax.all._
-import scalaz.concurrent.Future._
 
 import scalaz.syntax.all._
 import scalaz._
@@ -33,10 +30,7 @@ private[raii] object resourcetSpec {
         new Releasable[F, Borrowing[Resource]] {
           override val value: this.type Owned Resource = this own autoCloseable
 
-          override def releaseDependencies: F[Unit] = ().point[F]
-
-          override def releaseValue: F[Unit] = Applicative[F].point(value.close())
-          override def release: F[Unit] = releaseValue
+          override def release(): F[Unit] = Applicative[F].point(value.close())
         }
       }
     )
@@ -100,6 +94,10 @@ final class resourcetSpec extends AsyncFreeSpec with Matchers with Inside {
 
   import Exceptions._
 
+  import scalaz.syntax.all._
+  import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTMonadError
+  import com.thoughtworks.raii.resourcet.ResourceT.resourceFactoryTApplicative
+  import scalaz.concurrent.Future._
 
   "must acquire and release" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]

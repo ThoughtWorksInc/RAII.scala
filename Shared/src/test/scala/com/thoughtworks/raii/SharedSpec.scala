@@ -93,7 +93,7 @@ object SharedSpec {
         new Releasable[Future, String] {
           override def value: String = id
 
-          override def releaseValue: Future[Unit] = {
+          override def release(): Future[Unit] = {
             val removed = allOpenedResources.remove(id)
 
             removed match {
@@ -102,10 +102,6 @@ object SharedSpec {
             }
             Future.now(())
           }
-
-          override def release: Future[Unit] = releaseValue
-
-          override def releaseDependencies: Future[Unit] = Future.now(())
         }
       )
     }
@@ -458,7 +454,7 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
         new Releasable[Future, String] {
           override def value: String = callBackTuple._1
 
-          override def releaseValue: Future[Unit] = {
+          override def release(): Future[Unit] = {
             val removed = allOpenedResources.remove(callBackTuple._1)
 
             removed match {
@@ -468,10 +464,6 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
 
             Future.now(())
           }
-
-          override def release: Future[Unit] = releaseValue
-
-          override def releaseDependencies: Future[Unit] = Future.now(())
         }
       }
     }
@@ -544,15 +536,11 @@ class SharedSpec extends AsyncFreeSpec with Matchers with Inside {
         new Releasable[Future, String] {
           override def value: String = callBackTuple._1
 
-          override def releaseValue: Future[Unit] = {
+          override def release(): Future[Unit] = {
             Future.async { f =>
               allReleaseCallBack(callBackTuple._1) = f
             }
           }
-
-          override def release: Future[Unit] = releaseValue
-
-          override def releaseDependencies: Future[Unit] = Future.now(())
         }
       }
     }
