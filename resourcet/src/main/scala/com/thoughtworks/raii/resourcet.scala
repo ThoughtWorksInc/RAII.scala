@@ -28,7 +28,7 @@ object resourcet {
       *
       * @note After [[release]], [[value]] should not be used if:
       *  - [[value]] is a scoped native resource,
-      *    e.g. a [[com.thoughtworks.raii.asynchronous.Do.scoped scoped]] `AutoCloseable`,
+      *    e.g. a [[com.thoughtworks.raii.asynchronous.Do.scoped[A<:AutoCloseable](a:=>A)* scoped]] `AutoCloseable`,
       *  - or, [[value]] internally uses some scoped native resources.
       */
     def release(): F[Unit]
