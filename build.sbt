@@ -46,7 +46,7 @@ lazy val invariantJVM = invariant.jvm.addSbtFiles(file("../build.sbt.shared"))
 lazy val invariantJS = invariant.js.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val shared =
-  project.dependsOn(covariantJVM, invariantJVM % "test->test")
+  project.dependsOn(covariantJVM)
 
 lazy val asynchronous = project.dependsOn(shared, covariantJVM, ownershipJVM)
 
@@ -60,7 +60,7 @@ lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
     UnidocKeys.unidocProjectFilter in ScalaUnidoc in UnidocKeys.unidoc := {
-      inDependencies(asynchronous, transitive = true, includeRoot = true)
+      inDependencies(asynchronous, transitive = true, includeRoot = true) || inProjects(invariantJVM)
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
     scalacOptions += "-Xexperimental"
