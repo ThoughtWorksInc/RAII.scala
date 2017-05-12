@@ -2,7 +2,7 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.atomic.AtomicReference
 
-import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
+import com.thoughtworks.raii.covariant.{ResourceT, Releasable}
 
 import scala.annotation.tailrec
 import scala.collection.immutable.Queue
