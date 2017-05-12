@@ -60,13 +60,7 @@ object asynchronous {
   /** @template */
   type Do[+A] = opacityTypes.Do[A]
 
-  // DoFunctions is a workaround for type alias `Covariant`,
-  // because the abstract type cannot defined in object.
-  private[raii] trait DoFunctions {
-    type Covariant[A] >: Do[_ <: A] <: Do[_ <: A]
-  }
-
-  object Do extends DoFunctions {
+  object Do {
 
     implicit def doMonadErrorInstances: MonadError[Do, Throwable] = opacityTypes.doMonadErrorInstances
     implicit def doParallelApplicative(
