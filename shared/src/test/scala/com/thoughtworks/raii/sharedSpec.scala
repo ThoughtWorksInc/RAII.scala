@@ -1,14 +1,14 @@
 package com.thoughtworks.raii
 
-import com.thoughtworks.raii.resourcetSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
-import com.thoughtworks.raii.resourcetSpec._
+import com.thoughtworks.raii.sharedSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
+import com.thoughtworks.raii.sharedSpec._
 import com.thoughtworks.raii.shared.SharedOps
-import com.thoughtworks.raii.ownership.Borrowing
-import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
+import com.thoughtworks.raii.ownership._
+import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
-import com.thoughtworks.raii.resourcet.ResourceT._
-import com.thoughtworks.tryt.TryT.{tryTBindRec, tryTFunctor, tryTParallelApplicative}
-import com.thoughtworks.tryt.{TryT, TryTParallelApplicative}
+import com.thoughtworks.raii.covariant.ResourceT._
+import com.thoughtworks.tryt.covariant.TryT.{tryTBindRec, tryTFunctor, tryTParallelApplicative}
+import com.thoughtworks.tryt.covariant.{TryT, TryTParallelApplicative}
 
 import scala.util.{Success, Try}
 import scala.language.higherKinds
@@ -26,11 +26,70 @@ import scala.util.control.NoStackTrace
   */
 object sharedSpec {
 
+  def managedT[F[+ _]: Applicative, Resource <: AutoCloseable](
+      autoCloseable: => Resource): ResourceT[F, Borrowing[Resource]] = {
+    ResourceT(
+      Applicative[F].point {
+        new Releasable[F, Borrowing[Resource]] {
+          override val value: this.type Owned Resource = this own autoCloseable
+
+          override def release(): F[Unit] = Applicative[F].point(value.close())
+        }
+      }
+    )
+  }
+  object Exceptions {
+
+    case class Boom() extends RuntimeException
+
+    case class CanNotCloseResourceTwice() extends RuntimeException
+
+    case class CanNotOpenResourceTwice() extends RuntimeException
+
+    case class CanNotGenerateDataBecauseResourceIsNotOpen() extends RuntimeException
+
+  }
+
+  def createIdGenerator(): () => String = {
+    var nextId = 0;
+    { () =>
+      val id = nextId
+      nextId += 1
+      id.toString
+    }
+  }
+
+  final class FakeResource(allOpenedResources: mutable.HashMap[String, FakeResource], idGenerator: () => String)
+      extends {
+    val id = idGenerator()
+  } with AutoCloseable {
+
+    def this(allOpenedResources: mutable.HashMap[String, FakeResource], constantId: String) = {
+      this(allOpenedResources, { () =>
+        constantId
+      })
+    }
+
+    if (allOpenedResources.contains(id)) {
+      throw CanNotOpenResourceTwice()
+    }
+    allOpenedResources(id) = this
+
+    override def close(): Unit = {
+      val removed = allOpenedResources.remove(id)
+
+      //noinspection OptionEqualsSome
+      if (removed != Some(this)) {
+        throw CanNotCloseResourceTwice()
+      }
+    }
+  }
+
   def raiiFutureMonad: Monad[RAIIFuture] = ResourceT.resourceTMonad[Future]
 
-  type RAIIFuture[A] = ResourceT[Future, A]
+  type RAIIFuture[+A] = ResourceT[Future, A]
 
-  type RAIITask[A] = TryT[RAIIFuture, A]
+  type RAIITask[+A] = TryT[RAIIFuture, A]
 
   /** An exception that contains multiple Throwables. */
   final case class MultipleException(throwableSet: Set[Throwable])
@@ -167,7 +226,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
       managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
     allOpenedResources.keys shouldNot contain("0")
 
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceTMonad
+    import com.thoughtworks.raii.covariant.ResourceT.resourceTMonad
 
     //def resourceMonad = resourceTMonad[Future](Future.futureInstance)
     //mr.flatMap(???)
@@ -207,30 +266,30 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val sharedResource: ResourceT[Future, String] =
       ResourceT(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceTMonad
+    import com.thoughtworks.raii.covariant.ResourceT.resourceTMonad
 
-    val pf: RAIITask[String] = TryT[ResourceT[Future, ?], String](
+    val pf: RAIITask[String] = TryT[ResourceT[Future, `+?`], String](
       resourceTMonad[Future](Future.futureInstance).map(sharedResource) { Success(_) }
       //sharedResource.map(Success(_))
     )
 
     val parallelPf = Parallel(pf)
 
-    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Future, ?]].map(parallelPf) { a =>
+      tryTParallelApplicative[ResourceT[Future, `+?`]].map(parallelPf) { a =>
         events += "using a"
         a
       }
 
-    val result: TryT[ResourceT[Future, ?], String] = Parallel.unwrap(parallelResult)
+    val result: TryT[ResourceT[Future, `+?`], String] = Parallel.unwrap(parallelResult)
 
     val resourceFactoryFutureString: ResourceT[Future, Try[String]] =
-      TryT.unwrap[ResourceT[Future, ?], String](result)
+      TryT.unwrap[ResourceT[Future, `+?`], String](result)
 
     val future: Future[Try[String]] = ResourceT.run(resourceFactoryFutureString)
 
@@ -264,13 +323,13 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val parallelPf1 = Parallel(trypf1)
     val parallelPf2 = Parallel(trypf2)
 
-    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Future, ?]].apply2(parallelPf1, parallelPf2) { (a: String, b: String) =>
+      tryTParallelApplicative[ResourceT[Future, `+?`]].apply2(parallelPf1, parallelPf2) { (a: String, b: String) =>
         events += "using a & b"
         a + b
       }
@@ -306,15 +365,15 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val trypf1 = TryT(pf1)
 
     val parallelPf1 = Parallel(trypf1)
-    val parallelPf2 = Parallel(TryT.tryTMonadError[ResourceT[Future, ?]].raiseError[String](Boom()))
+    val parallelPf2 = Parallel(TryT.tryTMonadError[ResourceT[Future, `+?`]].raiseError[String](Boom()))
 
-    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Future, ?]].apply2(parallelPf1, parallelPf2) { (a: String, b: String) =>
+      tryTParallelApplicative[ResourceT[Future, `+?`]].apply2(parallelPf1, parallelPf2) { (a: String, b: String) =>
         events += "using a & b"
         a + b
       }
@@ -363,13 +422,13 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val parallelPf2 = Parallel(trypf2)
     val parallelPf3 = Parallel(trypf3)
 
-    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+      tryTParallelApplicative[ResourceT[Future, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
         (a: String, b: String, c: String) =>
           events += "using a & b & c"
           a + b + c
@@ -421,13 +480,13 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val parallelPf2 = Parallel(trypf2)
     val parallelPf3 = Parallel(trypf3)
 
-    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+      tryTParallelApplicative[ResourceT[Future, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
         (a: String, b: String, c: String) =>
           events += "using a & b & c"
           a + b + c
@@ -501,13 +560,13 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val parallelPf2 = Parallel(trypf2)
     val parallelPf3 = Parallel(trypf3)
 
-    import com.thoughtworks.tryt.TryT.tryTParallelApplicative
+    import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
     import scalaz.concurrent.Future.futureParallelApplicativeInstance
     import scalaz.concurrent.Future.futureInstance
-    import com.thoughtworks.raii.resourcet.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIITask[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Future, ?]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+      tryTParallelApplicative[ResourceT[Future, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
         (a: String, b: String, c: String) =>
           events += "using a & b & c"
           a + b + c

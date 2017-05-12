@@ -1,8 +1,8 @@
 package com.thoughtworks.raii
 
 import com.thoughtworks.raii.ownership._
-import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
-import com.thoughtworks.tryt.TryT
+import com.thoughtworks.raii.covariant.{ResourceT, Releasable}
+import com.thoughtworks.tryt.covariant.TryT
 
 import scala.concurrent.ExecutionContext
 import scalaz.{-\/, @@, Applicative, ContT, Monad, MonadError, Semigroup, \/, \/-}
@@ -12,7 +12,7 @@ import scala.util.{Failure, Success, Try}
 import scalaz.Free.Trampoline
 import scalaz.Tags.Parallel
 import scalaz.std.`try`
-import com.thoughtworks.raii.resourcet.ResourceT._
+import ResourceT._
 import TryT._
 import com.thoughtworks.raii.shared._
 import shapeless.<:!<
@@ -23,12 +23,12 @@ import shapeless.<:!<
 object asynchronous {
 
   /** @template */
-  private[raii] type RAIIFuture[A] = ResourceT[Future, A]
+  private[raii] type RAIIFuture[+A] = ResourceT[Future, A]
 
   private[raii] trait OpacityTypes {
-    type Do[A]
+    type Do[+A]
 
-    def fromTryT[A](run: TryT[ResourceT[Future,?], A]): Do[A]
+    def fromTryT[A](run: TryT[ResourceT[Future, `+?`], A]): Do[A]
 
     private[raii] def toTryT[F[_], A](doA: Do[A]): TryT[RAIIFuture, A]
 
@@ -40,7 +40,7 @@ object asynchronous {
   }
 
   private[asynchronous] val opacityTypes: OpacityTypes = new OpacityTypes {
-    override type Do[A] = TryT[RAIIFuture, A]
+    override type Do[+A] = TryT[RAIIFuture, A]
 
     override def fromTryT[A](run: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = run
 
@@ -51,13 +51,14 @@ object asynchronous {
     }
 
     override def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = {
-      import Future._
-      implicitly
+      TryT.tryTParallelApplicative[RAIIFuture](
+        ResourceT.resourceTParallelApplicative[Future](Future.futureParallelApplicativeInstance),
+        throwableSemigroup)
     }
   }
 
   /** @template */
-  type Do[A] = opacityTypes.Do[A]
+  type Do[+A] = opacityTypes.Do[A]
 
   // DoFunctions is a workaround for type alias `Covariant`,
   // because the abstract type cannot defined in object.

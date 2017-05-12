@@ -7,3 +7,5 @@ scalacOptions += "-Ypartial-unification"
 scalacOptions += "-Xexperimental" // Enable SAM types on Scala 2.11
 
 libraryDependencies += "com.chuusai" %% "shapeless" % "2.3.2"
+
+libraryDependencies += "com.thoughtworks.tryt" %% "covariant" % "2.0.0"

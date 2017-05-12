@@ -3,10 +3,9 @@ package com.thoughtworks.raii
 import java.io.{File, FileInputStream}
 
 import org.scalatest._
-import com.thoughtworks.raii.resourcetSpec.Exceptions.{CanNotCloseResourceTwice, CanNotOpenResourceTwice}
-import com.thoughtworks.raii.resourcetSpec.FakeResource
-import com.thoughtworks.raii.resourcet.{ResourceT, Releasable}
-import com.thoughtworks.raii.resourcet._
+import com.thoughtworks.raii.invariantSpec.Exceptions.{CanNotCloseResourceTwice, CanNotOpenResourceTwice}
+import com.thoughtworks.raii.invariantSpec.FakeResource
+import com.thoughtworks.raii.invariant._
 
 import scalaz.syntax.all._
 import scalaz._
@@ -17,7 +16,7 @@ import scalaz.effect.IO
 import scalaz.effect.IOInstances
 import ownership._
 
-private[raii] object resourcetSpec {
+private[raii] object invariantSpec {
 
   def scoped[Resource <: AutoCloseable](autoCloseable: => Resource): ResourceT[IO, Borrowing[Resource]] =
     managedT[IO, Resource](autoCloseable)
@@ -87,14 +86,14 @@ private[raii] object resourcetSpec {
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-final class resourcetSpec extends AsyncFreeSpec with Matchers with Inside {
+final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
 
-  import resourcetSpec._
+  import invariantSpec._
 
   import Exceptions._
 
   import scalaz.syntax.all._
-  import com.thoughtworks.raii.resourcet.ResourceT._
+  import com.thoughtworks.raii.invariant.ResourceT._
   import scalaz.concurrent.Future._
 
   "must acquire and release" in {
@@ -253,7 +252,7 @@ final class resourcetSpec extends AsyncFreeSpec with Matchers with Inside {
     events should be(mutable.Buffer("acquire 0", "release 0"))
   }
 
-  import com.thoughtworks.raii.resourcet.ResourceT._
+  import com.thoughtworks.raii.invariant.ResourceT._
 
   "both of resources must acquire and release" in {
 
@@ -279,7 +278,7 @@ final class resourcetSpec extends AsyncFreeSpec with Matchers with Inside {
   "must acquire and release twice" in {
 
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val idGenerator = resourcetSpec.createIdGenerator()
+    val idGenerator = invariantSpec.createIdGenerator()
     val mr = scoped(new FakeResource(allOpenedResources, idGenerator))
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
@@ -300,7 +299,7 @@ final class resourcetSpec extends AsyncFreeSpec with Matchers with Inside {
 
   "must could be shared" in {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val idGenerator = resourcetSpec.createIdGenerator()
+    val idGenerator = invariantSpec.createIdGenerator()
     val mr = scoped(new FakeResource(allOpenedResources, idGenerator))
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
