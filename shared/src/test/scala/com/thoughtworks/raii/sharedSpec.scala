@@ -3,7 +3,6 @@ package com.thoughtworks.raii
 import com.thoughtworks.raii.sharedSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.sharedSpec._
 import com.thoughtworks.raii.shared.SharedOps
-import com.thoughtworks.raii.ownership._
 import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
 import com.thoughtworks.raii.covariant.ResourceT._
@@ -26,12 +25,11 @@ import scala.util.control.NoStackTrace
   */
 object sharedSpec {
 
-  def managedT[F[+ _]: Applicative, Resource <: AutoCloseable](
-      autoCloseable: => Resource): ResourceT[F, Borrowing[Resource]] = {
+  def managedT[F[+ _]: Applicative, Resource <: AutoCloseable](autoCloseable: => Resource): ResourceT[F, Resource] = {
     ResourceT(
       Applicative[F].point {
-        new Releasable[F, Borrowing[Resource]] {
-          override val value: this.type Owned Resource = this own autoCloseable
+        new Releasable[F, Resource] {
+          override val value: Resource = autoCloseable
 
           override def release(): F[Unit] = Applicative[F].point(value.close())
         }
@@ -177,7 +175,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
     val mr0 = managedT[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
-    val asynchronousResource: Future[Unit] = using[Future, Borrowing[FakeResource], Unit](mr0, r0 => {
+    val asynchronousResource: Future[Unit] = using[Future, FakeResource, Unit](mr0, r0 => {
       Future.delay {
         events += "using r0"
         allOpenedResources("r0") should be(r0)
@@ -201,7 +199,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
       val mr0 = managedT[Task, FakeResource](new FakeResource(allOpenedResources, "r0"))
       allOpenedResources.keys shouldNot contain("r0")
 
-      val asynchronousResource: Task[Unit] = using[Task, Borrowing[FakeResource], Unit](mr0, r0 => {
+      val asynchronousResource: Task[Unit] = using[Task, FakeResource, Unit](mr0, r0 => {
         Task.delay {
           events += "using r0"
           allOpenedResources("r0") should be(r0)
@@ -222,7 +220,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside {
   "reference count test with shared -- async" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr: ResourceT[Future, Borrowing[FakeResource]] =
+    val mr: ResourceT[Future, FakeResource] =
       managedT[Future, FakeResource](new FakeResource(allOpenedResources, "0")).shared
     allOpenedResources.keys shouldNot contain("0")
 
