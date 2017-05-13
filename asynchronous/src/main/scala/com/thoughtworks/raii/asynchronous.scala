@@ -1,6 +1,5 @@
 package com.thoughtworks.raii
 
-import com.thoughtworks.raii.ownership._
 import com.thoughtworks.raii.covariant.{ResourceT, Releasable}
 import com.thoughtworks.tryt.covariant.TryT
 
@@ -80,11 +79,11 @@ object asynchronous {
       Some(unwrap(doA))
     }
 
-    def scoped[A <: AutoCloseable](task: Task[A]): Do[Scoped[A]] = {
+    def scoped[A <: AutoCloseable](task: Task[A]): Do[A] = {
       Do(
         task.get.map { either =>
-          new Releasable[Future, Try[Scoped[A]]] {
-            override def value: Try[this.type Owned A] = `try`.fromDisjunction(either).map(this.own)
+          new Releasable[Future, Try[A]] {
+            override def value: Try[A] = `try`.fromDisjunction(either)
 
             override def release(): Future[Unit] = {
               either match {
@@ -99,11 +98,11 @@ object asynchronous {
       )
     }
 
-    def scoped[A <: AutoCloseable](future: Future[A]): Do[Scoped[A]] = {
+    def scoped[A <: AutoCloseable](future: Future[A]): Do[A] = {
       scoped(new Task(future.map(\/-(_))))
     }
 
-    def scoped[A <: AutoCloseable](a: => A): Do[Scoped[A]] = {
+    def scoped[A <: AutoCloseable](a: => A): Do[A] = {
       scoped(Task.delay(a))
     }
 
@@ -153,13 +152,13 @@ object asynchronous {
       * @note `A` itself must not be a is scoped resources,
       *      though `A` may depends on some scoped resources during opening `A`.
       * @example {{{
-      *   val doInputStream: Do[Scoped[InputStream]] = ???
+      *   val doInputStream: Do[InputStream] = ???
       *   doInputStream.map { input: InputStream =>
       *     doSomethingWith(input)
       *   }.run.unsafeAsync....
       * }}}
       */
-    def run[A](doA: Do[A])(implicit notScoped: A <:!< Scoped[_]): Task[A] = {
+    def run[A](doA: Do[A]): Task[A] = {
       val future: Future[Throwable \/ A] =
         ResourceT.run(ResourceT(Do.unwrap(doA))).map(`try`.toDisjunction)
       new Task(future)

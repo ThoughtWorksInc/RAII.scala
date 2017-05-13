@@ -2,7 +2,7 @@ import scala.util.matching.Regex.{Groups, Match}
 
 crossScalaVersions := Seq("2.11.11", "2.12.2")
 
-lazy val covariant = crossProject.crossType(CrossType.Pure).dependsOn(ownership % Test)
+lazy val covariant = crossProject.crossType(CrossType.Pure)
 
 lazy val covariantJVM = covariant.jvm.addSbtFiles(file("../build.sbt.shared"))
 
@@ -12,7 +12,6 @@ val CovariantRegex = """extends ResourceFactoryTInstances0|covariant|\+\s*([A_])
 
 lazy val invariant = crossProject
   .crossType(CrossType.Pure)
-  .dependsOn(ownership % Test)
   .settings(
     for (configuration <- Seq(Compile, Test)) yield {
       sourceGenerators in configuration += Def.task {
@@ -46,15 +45,9 @@ lazy val invariantJVM = invariant.jvm.addSbtFiles(file("../build.sbt.shared"))
 lazy val invariantJS = invariant.js.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val shared =
-  project.dependsOn(covariantJVM, ownershipJVM % Test)
+  project.dependsOn(covariantJVM)
 
-lazy val asynchronous = project.dependsOn(shared, covariantJVM, ownershipJVM)
-
-lazy val ownership = crossProject.crossType(CrossType.Pure)
-
-lazy val ownershipJVM = ownership.jvm.addSbtFiles(file("../build.sbt.shared"))
-
-lazy val ownershipJS = ownership.js.addSbtFiles(file("../build.sbt.shared"))
+lazy val asynchronous = project.dependsOn(shared, covariantJVM)
 
 lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)

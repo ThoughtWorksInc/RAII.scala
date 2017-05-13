@@ -14,19 +14,17 @@ import scala.concurrent.{Await, Promise}
 import scala.language.higherKinds
 import scalaz.effect.IO
 import scalaz.effect.IOInstances
-import ownership._
 
 private[raii] object invariantSpec {
 
-  def scoped[Resource <: AutoCloseable](autoCloseable: => Resource): ResourceT[IO, Borrowing[Resource]] =
+  def scoped[Resource <: AutoCloseable](autoCloseable: => Resource): ResourceT[IO, Resource] =
     managedT[IO, Resource](autoCloseable)
 
-  def managedT[F[_]: Applicative, Resource <: AutoCloseable](
-      autoCloseable: => Resource): ResourceT[F, Borrowing[Resource]] = {
+  def managedT[F[_]: Applicative, Resource <: AutoCloseable](autoCloseable: => Resource): ResourceT[F, Resource] = {
     ResourceT(
       Applicative[F].point {
-        new Releasable[F, Borrowing[Resource]] {
-          override val value: this.type Owned Resource = this own autoCloseable
+        new Releasable[F, Resource] {
+          override val value: Resource = autoCloseable
 
           override def release(): F[Unit] = Applicative[F].point(value.close())
         }
