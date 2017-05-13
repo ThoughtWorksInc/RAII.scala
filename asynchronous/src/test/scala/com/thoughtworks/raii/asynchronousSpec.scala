@@ -16,14 +16,6 @@ import com.thoughtworks.raii.asynchronous.Do._
   */
 final class asynchronousSpec extends FreeSpec with Matchers {
 
-  "Do.run must not compile for scoped resource" in {
-    "Do.run(Do.scoped(new StringWriter))" shouldNot typeCheck
-  }
-
-  "Do.run must not compile for garbage collectable resource" in {
-    "Do.run(Do.delay('foo))" should compile
-  }
-
   "Given a scoped resource" - {
     var isSourceClosed = false
     val source = Do.scoped(new AutoCloseable {
