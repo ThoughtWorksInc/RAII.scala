@@ -22,34 +22,34 @@ import shapeless.<:!<
 object asynchronous {
 
   /** @template */
-  private[raii] type RAIIFuture[+A] = ResourceT[Future, A]
+  private type RAIIFuture[+A] = ResourceT[Future, A]
 
-  private[raii] trait OpacityTypes {
+  private[asynchronous] trait OpacityTypes {
     type Do[+A]
 
-    def fromTryT[A](run: TryT[ResourceT[Future, `+?`], A]): Do[A]
+    private[asynchronous] def fromTryT[A](run: TryT[ResourceT[Future, `+?`], A]): Do[A]
 
-    private[raii] def toTryT[F[_], A](doA: Do[A]): TryT[RAIIFuture, A]
+    private[asynchronous] def toTryT[F[_], A](doA: Do[A]): TryT[RAIIFuture, A]
 
     //TODO: BindRec
-    implicit def doMonadErrorInstances: MonadError[Do, Throwable]
+    implicit private[asynchronous] def doMonadErrorInstances: MonadError[Do, Throwable]
 
-    implicit def doParallelApplicative(
+    implicit private[asynchronous] def doParallelApplicative(
         implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]]
   }
 
-  private[asynchronous] val opacityTypes: OpacityTypes = new OpacityTypes {
+  val opacityTypes: OpacityTypes = new OpacityTypes {
     override type Do[+A] = TryT[RAIIFuture, A]
 
-    override def fromTryT[A](run: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = run
+    override private[asynchronous] def fromTryT[A](run: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = run
 
-    override private[raii] def toTryT[F[_], A](doa: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = doa
+    override private[asynchronous] def toTryT[F[_], A](doa: TryT[RAIIFuture, A]): TryT[RAIIFuture, A] = doa
 
-    override def doMonadErrorInstances: MonadError[TryT[RAIIFuture, ?], Throwable] = {
+    override private[asynchronous] def doMonadErrorInstances: MonadError[TryT[RAIIFuture, ?], Throwable] = {
       TryT.tryTMonadError[RAIIFuture](ResourceT.resourceTMonad[Future](Future.futureInstance))
     }
 
-    override def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = {
+    override private[asynchronous] def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = {
       TryT.tryTParallelApplicative[RAIIFuture](
         ResourceT.resourceTParallelApplicative[Future](Future.futureParallelApplicativeInstance),
         throwableSemigroup)

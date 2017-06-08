@@ -9,7 +9,7 @@ import scalaz.syntax.all._
 
 object covariant {
 
-  private[raii] val opacityTypes: OpacityTypes = new OpacityTypes {
+  val opacityTypes: OpacityTypes = new OpacityTypes {
     override type ResourceT[F[+ _], +A] = F[Releasable[F, A]]
 
     override def apply[F[+ _], A](run: F[Releasable[F, A]]): ResourceT[F, A] = run
@@ -50,9 +50,9 @@ object covariant {
   private[raii] trait OpacityTypes {
     type ResourceT[F[+ _], +A]
 
-    def apply[F[+ _], A](run: F[Releasable[F, A]]): ResourceT[F, A]
+    private[raii] def apply[F[+ _], A](run: F[Releasable[F, A]]): ResourceT[F, A]
 
-    def unwrap[F[+ _], A](resourceT: ResourceT[F, A]): F[Releasable[F, A]]
+    private[raii] def unwrap[F[+ _], A](resourceT: ResourceT[F, A]): F[Releasable[F, A]]
 
   }
 
