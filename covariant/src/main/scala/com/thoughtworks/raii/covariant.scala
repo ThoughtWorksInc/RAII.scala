@@ -32,19 +32,19 @@ object covariant {
 
   /** The data structure that provides automatic resource management.
     *
-    * @example [[ResourceT]] can be used as a monad transformer for [[scalaz.effect.IO]].
+    * @example [[ResourceT]] can be used as a monad transformer for [[scalaz.Name]].
     *          {{{
-    *          import scalaz.effect.IO
-    *          type RAII[A] = ResourceT[IO, A]
+    *          import scalaz.Name
+    *          type RAII[A] = ResourceT[Name, A]
     *          }}}
     *
     *          Given a resource that creates temporary files
     *
     *          {{{
     *          import java.io.File
-    *          val resource: RAII[File] = ResourceT(IO(new Releasable[IO, File] {
+    *          val resource: RAII[File] = ResourceT(Name(new Releasable[Name, File] {
     *            override val value: File = File.createTempFile("test", ".tmp");
-    *            override def release(): IO[Unit] = IO {
+    *            override def release(): Name[Unit] = Name {
     *              value.delete()
     *            }
     *          }))
