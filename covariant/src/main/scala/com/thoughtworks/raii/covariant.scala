@@ -7,8 +7,20 @@ import scalaz.Tags.Parallel
 import scalaz.{\/, _}
 import scalaz.syntax.all._
 
+/** The namespace that contains the covariant [[ResourceT]].
+  *
+  * Usage:
+  * {{{
+  * import com.thoughtworks.raii.covariant._
+  * }}}
+  */
 object covariant {
 
+  /** The type-level [[http://en.cppreference.com/w/cpp/language/pimpl Pimp]]
+    * in order to prevent the Scala compiler seeing the actual type of [[ResourceT]]
+    *
+    * @note For internal usage only.
+    */
   val opacityTypes: OpacityTypes = new OpacityTypes {
     override type ResourceT[F[+ _], +A] = F[Releasable[F, A]]
 
@@ -18,18 +30,69 @@ object covariant {
       resourceT
   }
 
-  /** @template */
+  /** The data structure that provides automatic resource management.
+    *
+    * @example [[ResourceT]] can be used as a monad transformer with [[scalaz.Name]].
+    *          {{{
+    *          import scalaz.Name
+    *          type RAII[A] = ResourceT[Name, A]
+    *          }}}
+    *
+    *          Given a resource that creates temporary files
+    *
+    *          {{{
+    *          import java.io.File
+    *          val resource: RAII[File] = ResourceT(Name(new Releasable[Name, File] {
+    *            override val value: File = File.createTempFile("test", ".tmp");
+    *            override def release(): Name[Unit] = Name {
+    *              value.delete()
+    *            }
+    *          }))
+    *          }}}
+    *
+    *          when using temporary file created by `resouce` in a  `for` / `yield` block,
+    *          those temporary files should be available.
+    *
+    *          {{{
+    *          import scalaz.syntax.all._
+    *          import ResourceT._
+    *          val usingResouce = for {
+    *            tmpFile1 <- resource
+    *            tmpFile2 <- resource
+    *          } yield {
+    *            tmpFile1 shouldNot be(tmpFile2)
+    *            tmpFile1 should exist
+    *            tmpFile2 should exist
+    *            (tmpFile1, tmpFile2)
+    *          }
+    *          }}}
+    *
+    *          and those files should have been deleted after the `for` / `yield` block.
+    *
+    *          {{{
+    *          val (tmpFile1, tmpFile2) = ResourceT.run(usingResouce).value
+    *          tmpFile1 shouldNot exist
+    *          tmpFile2 shouldNot exist
+    *          }}}
+    *
+    * @note This [[ResourceT]] type is an opacity alias to `F[Releasable[F, A]]`.
+    * @see All type classes and helper functions for this `ResourceT` type are defined in the companion object [[ResourceT$ ResourceT]]
+    * @template
+    */
   type ResourceT[F[+ _], +A] = opacityTypes.ResourceT[F, A]
+
   import opacityTypes._
+
+  /** An available [[value]], which may be [[release]] in the future. */
   trait Releasable[F[+ _], +A] {
     def value: A
 
     /** Releases [[value]] and all resource dependencies during creating [[value]].
       *
       * @note After [[release]], [[value]] should not be used if:
-      *  - [[value]] is a scoped native resource,
-      *    e.g. a [[com.thoughtworks.raii.asynchronous.Do.scoped[A<:AutoCloseable](a:=>A)* scoped]] `AutoCloseable`,
-      *  - or, [[value]] internally uses some scoped native resources.
+      *       - [[value]] is a scoped native resource,
+      *         e.g. this [[Releasable]] is created from [[com.thoughtworks.raii.asynchronous.Do.scoped[A<:AutoCloseable](a:=>A)* scoped]],
+      *       - or, [[value]] internally uses some scoped native resources.
       */
     def release(): F[Unit]
   }
