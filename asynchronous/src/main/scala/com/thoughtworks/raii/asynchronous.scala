@@ -14,7 +14,6 @@ import scalaz.std.`try`
 import ResourceT._
 import TryT._
 import com.thoughtworks.raii.shared._
-import shapeless.<:!<
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
@@ -38,6 +37,11 @@ object asynchronous {
         implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]]
   }
 
+  /** The type-level [[http://en.cppreference.com/w/cpp/language/pimpl Pimp]]
+    * in order to prevent the Scala compiler seeing the actual type of [[Do]]
+    *
+    * @note For internal usage only.
+    */
   val opacityTypes: OpacityTypes = new OpacityTypes {
     override type Do[+A] = TryT[RAIIFuture, A]
 
@@ -56,7 +60,12 @@ object asynchronous {
     }
   }
 
-  /** @template */
+  /** An asynchronous task that support exception handling and automatic resource management.
+    *
+    * @note This [[Do]] type is an opacity alias to `Future[Releasable[Future, Try[A]]`.
+    *       All type classes and helper functions for this `Do` type are defined in the companion object [[Do$ Do]]
+    * @template
+    */
   type Do[+A] = opacityTypes.Do[A]
 
   object Do {

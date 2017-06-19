@@ -32,19 +32,19 @@ object covariant {
 
   /** The data structure that provides automatic resource management.
     *
-    * @example [[ResourceT]] can be used as a monad transformer with [[scalaz.Name]].
+    * @example [[ResourceT]] can be used as a monad transformer for [[scalaz.effect.IO]].
     *          {{{
-    *          import scalaz.Name
-    *          type RAII[A] = ResourceT[Name, A]
+    *          import scalaz.effect.IO
+    *          type RAII[A] = ResourceT[IO, A]
     *          }}}
     *
     *          Given a resource that creates temporary files
     *
     *          {{{
     *          import java.io.File
-    *          val resource: RAII[File] = ResourceT(Name(new Releasable[Name, File] {
+    *          val resource: RAII[File] = ResourceT(IO(new Releasable[IO, File] {
     *            override val value: File = File.createTempFile("test", ".tmp");
-    *            override def release(): Name[Unit] = Name {
+    *            override def release(): IO[Unit] = IO {
     *              value.delete()
     *            }
     *          }))
@@ -76,7 +76,7 @@ object covariant {
     *          }}}
     *
     * @note This [[ResourceT]] type is an opacity alias to `F[Releasable[F, A]]`.
-    * @see All type classes and helper functions for this `ResourceT` type are defined in the companion object [[ResourceT$ ResourceT]]
+    *       All type classes and helper functions for this `ResourceT` type are defined in the companion object [[ResourceT$ ResourceT]]
     * @template
     */
   type ResourceT[F[+ _], +A] = opacityTypes.ResourceT[F, A]
@@ -119,6 +119,12 @@ object covariant {
 
   }
 
+  /** The companion object of [[ResourceT]].
+    *
+    * @note There are some implicit method that provides [[scalaz.Monad]]s as monad transformers of `F`.
+    *       Those monads running will collect all resources,
+    *       which will be open and release altogether when [[run]] is called.
+    */
   object ResourceT extends ResourceFactoryTInstances0 {
 
     def apply[F[+ _], A](run: F[Releasable[F, A]]): ResourceT[F, A] = opacityTypes.apply(run)
@@ -137,9 +143,11 @@ object covariant {
       }
     }
 
-    /**
-      * Return a [Future] which contains content of [Releasable] and [Releasable] will be closed,
-      * NOTE: the content of [Releasable] must be JVM resource cause the content will not be closed.
+    /** Returns a `F` that perform following process:
+      *
+      * - Creating a [[Releasable]] for `A`
+      * - Closing the [[Releasable]]
+      * - Returning `A`
       */
     final def run[F[+ _], A](resourceT: ResourceT[F, A])(implicit monad: Bind[F]): F[A] = {
       unwrap(resourceT).flatMap { resource: Releasable[F, A] =>
@@ -149,6 +157,11 @@ object covariant {
       }
     }
 
+    /** Returns a resource of `B` based on a resource of `A` and a function that creates `B`.
+      *
+      * @note `releaseMap` is to `map` in [[resourceTMonad]],
+      *       except `releaseMap` will release `A` right after `B` is created.
+      */
     def releaseMap[F[+ _]: Monad, A, B](fa: ResourceT[F, A])(f: A => B): ResourceT[F, B] = {
       opacityTypes.apply(
         unwrap(fa).flatMap { releasableA =>
@@ -166,6 +179,11 @@ object covariant {
       )
     }
 
+    /** Returns a resource of `B` based on a resource of `A` and a function that creates resource of `B`.
+      *
+      * @note `releaseFlatMap` is to `flatMap` in [[resourceTMonad]],
+      *       except `releaseFlatMap` will release `A` right after `B` is created.
+      */
     def releaseFlatMap[F[+ _]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
       opacityTypes.apply(
         for {

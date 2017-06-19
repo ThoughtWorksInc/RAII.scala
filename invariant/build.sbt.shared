@@ -11,3 +11,5 @@ libraryDependencies += "org.scalatest" %%% "scalatest" % "3.0.1" % Test
 scalacOptions += "-Xexperimental" // Enable SAM type for Scala 2.11
 
 scalacOptions += "-Ypartial-unification"
+
+enablePlugins(Example)
