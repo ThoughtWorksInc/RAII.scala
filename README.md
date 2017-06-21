@@ -9,7 +9,7 @@
 ## Asynchronous `Do`
 
 An `asynchronous.Do` is an asynchronous value, like `scala.concurrent.Future` or `scalaz.concurrent.Task`.
-The difference is that resources in `Do` can be automatically acquired and released in scope,
+The difference is that resources in `Do` can be either automatically acquired/released in scope,
 or managed by reference counting mechanism.
 
 To use `Do`, add the following setting to your build.sbt,
