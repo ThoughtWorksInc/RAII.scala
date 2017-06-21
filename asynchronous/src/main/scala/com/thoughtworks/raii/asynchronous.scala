@@ -75,9 +75,34 @@ object asynchronous {
     */
   type Do[+Value] = opacityTypes.Do[Value]
 
-  /** A [[Do]] tagged as [[Parallel]].
+  /** A [[Do]] tagged as [[scalaz.Tags.Parallel Parallel]].
     *
-    * @see [[ParallelDo$.doParallelApplicative]] for the [[scalaz.Applicative Applicative]] type class for parallel computing.
+    * @example `ParallelDo` and [[Do]] can be converted to each other via [[scalaz.Tags.Parallel]].
+    *
+    *          Given a [[Do]],
+    *
+    *          {{{
+    *          import com.thoughtworks.raii.asynchronous.{Do, ParallelDo}
+    *          import java.net._
+    *          import java.io._
+    *          val originalDoInput: Do[InputStream] = Do.scoped(new URL("http://thoughtworks.com/").openStream())
+    *          }}}
+    *
+    *          when converting it to `ParallelDo` and converting it back,
+    *
+    *          {{{
+    *          import scalaz.Tags.Parallel
+    *          val parallelDoInput: ParallelDo[InputStream] = Parallel(originalDoInput)
+    *          val Parallel(doInput) = parallelDoInput
+    *          }}}
+    *
+    *          then the [[Do]] should be still the original instance.
+    *
+    *          {{{
+    *          doInput should be(originalDoInput)
+    *          }}}
+    *
+    * @see [[ParallelDo.doParallelApplicative]] for the [[scalaz.Applicative Applicative]] type class for parallel computing.
     *
     * @template
     */
@@ -113,8 +138,10 @@ object asynchronous {
     */
   object Do {
 
+    /** @group Type classes */
     implicit def doMonadErrorInstances: MonadError[Do, Throwable] = opacityTypes.doMonadErrorInstances
 
+    /** @group Converters */
     def apply[Value](future: Future[Releasable[Future, Try[Value]]]): Do[Value] = {
       opacityTypes.fromTryT(TryT[RAIIFuture, Value](ResourceT(future)))
     }
@@ -124,7 +151,10 @@ object asynchronous {
       future
     }
 
-    /** Returns the underlying [[scalaz.concurrent.Future]] that creates a [[covariant.Releasable]] `Value`. */
+    /** Returns the underlying [[scalaz.concurrent.Future]] that creates a [[covariant.Releasable]] `Value`.
+      *
+      * @group Converters
+      */
     def unapply[Value](doValue: Do[Value]): Some[Future[Releasable[Future, Try[Value]]]] = {
       Some(unwrap(doValue))
     }
@@ -324,8 +354,8 @@ object asynchronous {
       *
       * When the wrapper `Do` is used by multiple larger `Do` at the same time,
       * only one `Value` instance is created.
-      * The underlying `Value` will be [[covariant.Releasable.release release]]d once
-      * at the time all user released the wrapper `Do`.
+      * The underlying `Value` will be [[covariant.Releasable.release release]]d only once,
+      * when all users [[covariant.Releasable.release release]] the wrapper `Do`.
       */
     def shared[Value](doValue: Do[Value]): Do[Value] = {
       val sharedFuture: RAIIFuture[Try[Value]] = TryT.unwrap(opacityTypes.toTryT(doValue)).shared
