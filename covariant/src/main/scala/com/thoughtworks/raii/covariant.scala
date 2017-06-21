@@ -83,7 +83,7 @@ object covariant {
 
   import opacityTypes._
 
-  /** An available [[value]], which can be [[release]]d.
+  /** A container of a [[value]] and a function to [[release]] the `value`.
     * @tparam A the type of [[value]]
     * @tparam F the monadic type of [[release]]
     */
@@ -95,7 +95,7 @@ object covariant {
       * @note After [[release]], [[value]] should not be used if:
       *       - [[value]] is a scoped native resource,
       *         e.g. this [[Releasable]] is created from [[com.thoughtworks.raii.asynchronous.Do.scoped[Value<:AutoCloseable](value:=>Value)* scoped]],
-      *       - or, [[value]] internally uses some scoped native resources.
+      *       - or, [[value]] internally references some scoped native resources.
       */
     def release(): F[Unit]
   }
