@@ -83,7 +83,10 @@ object covariant {
 
   import opacityTypes._
 
-  /** An available [[value]], which may be [[release]] in the future. */
+  /** An available [[value]], which can be [[release]]d.
+    * @tparam A the type of [[value]]
+    * @tparam F the monadic type of [[release]]
+    */
   trait Releasable[F[+ _], +A] {
     def value: A
 
@@ -91,7 +94,7 @@ object covariant {
       *
       * @note After [[release]], [[value]] should not be used if:
       *       - [[value]] is a scoped native resource,
-      *         e.g. this [[Releasable]] is created from [[com.thoughtworks.raii.asynchronous.Do.scoped[A<:AutoCloseable](a:=>A)* scoped]],
+      *         e.g. this [[Releasable]] is created from [[com.thoughtworks.raii.asynchronous.Do.scoped[Value<:AutoCloseable](value:=>Value)* scoped]],
       *       - or, [[value]] internally uses some scoped native resources.
       */
     def release(): F[Unit]
@@ -181,7 +184,7 @@ object covariant {
 
     /** Returns a resource of `B` based on a resource of `A` and a function that creates resource of `B`.
       *
-      * @note `releaseFlatMap` is to `flatMap` in [[resourceTMonad]],
+      * @note `releaseFlatMap` is similar to `flatMap` in [[resourceTMonad]],
       *       except `releaseFlatMap` will release `A` right after `B` is created.
       */
     def releaseFlatMap[F[+ _]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
