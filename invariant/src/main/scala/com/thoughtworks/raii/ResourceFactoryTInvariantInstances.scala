@@ -10,7 +10,8 @@ import scala.language.higherKinds
   */
 private[raii] trait ResourceFactoryTInvariantInstances { this: ResourceT.type =>
 
-  implicit val resourceTMonadTrans = new MonadTrans[ResourceT] {
+  /** @group Type classes */
+  implicit def resourceTMonadTrans: MonadTrans[ResourceT] = new MonadTrans[ResourceT] {
 
     override def liftM[F[_]: Monad, A](fa: F[A]): ResourceT[F, A] =
       opacityTypes.apply(fa.map(Releasable.now(_)))

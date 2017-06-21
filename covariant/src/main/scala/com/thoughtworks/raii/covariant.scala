@@ -16,7 +16,7 @@ import scalaz.syntax.all._
   */
 object covariant {
 
-  /** The type-level [[http://en.cppreference.com/w/cpp/language/pimpl Pimp]]
+  /** The type-level [[http://en.cppreference.com/w/cpp/language/pimpl Pimpl]]
     * in order to prevent the Scala compiler seeing the actual type of [[ResourceT]]
     *
     * @note For internal usage only.
@@ -32,9 +32,11 @@ object covariant {
 
   /** The data structure that provides automatic resource management.
     *
-    * @example `ResourceT` can be used as a monad transformer for [[scalaz.Name]
+    * @example `ResourceT` can be used as a monad transformer for [[scalaz.Name]]
+    *
     *          {{{
     *          import scalaz.Name
+    *          import com.thoughtworks.raii.covariant.ResourceT, ResourceT._
     *          type RAII[A] = ResourceT[Name, A]
     *          }}}
     *
@@ -55,7 +57,6 @@ object covariant {
     *
     *          {{{
     *          import scalaz.syntax.all._
-    *          import ResourceT._
     *          val usingResouce = for {
     *            tmpFile1 <- resource
     *            tmpFile2 <- resource

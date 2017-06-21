@@ -63,12 +63,11 @@ object asynchronous {
   /** An universal monadic data type built-in many useful monad transformers.
     *
     * Features of `Do`:
-    *  - exception handling
-    *  - automatic resource management
-    *  - reference counting
-    *  - covariance
-    *  - asynchronous programming
-    *  - parallel computing
+    *  - [[com.thoughtworks.tryt.covariant.TryT exception handling]]
+    *  - [[com.thoughtworks.raii.covariant.ResourceT automatic resource management]]
+    *  - [[Do$.shared reference counting]]
+    *  - [[scalaz.concurrent.Future asynchronous programming]]
+    *  - [[ParallelDo parallel computing]]
     *
     * @note This `Do` type is an [[https://www.reddit.com/r/scala/comments/5qbdgq/value_types_without_anyval/dcxze9q/ opacity alias]] to `Future[Releasable[Future, Try[Value]]]`.
     * @see [[Do$ Do]] companion object for all type classes and helper functions for this `Do` type.
@@ -76,7 +75,24 @@ object asynchronous {
     */
   type Do[+Value] = opacityTypes.Do[Value]
 
+  /** A [[Do]] tagged as [[Parallel]].
+    *
+    * @see [[ParallelDo$.doParallelApplicative]] for the [[scalaz.Applicative Applicative]] type class for parallel computing.
+    *
+    * @template
+    */
   type ParallelDo[Value] = Do[Value] @@ Parallel
+
+  object ParallelDo {
+
+    /** Returns an [[scalaz.Applicative Applicative]] type class for parallel computing.
+      *
+      * @note This type class requires a [[scalaz.Semigroup Semigroup]] to combine multiple `Throwable`s into one,
+      *       in the case of multiple tasks report errors in parallel.
+      */
+    implicit def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]): Applicative[ParallelDo] =
+      opacityTypes.doParallelApplicative
+  }
 
   /** @define now Converts a strict value to a `Do` whose [[covariant.Releasable.release release]] operation is no-op.
     *
@@ -98,8 +114,6 @@ object asynchronous {
   object Do {
 
     implicit def doMonadErrorInstances: MonadError[Do, Throwable] = opacityTypes.doMonadErrorInstances
-    implicit def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]): Applicative[ParallelDo] =
-      opacityTypes.doParallelApplicative
 
     def apply[Value](future: Future[Releasable[Future, Try[Value]]]): Do[Value] = {
       opacityTypes.fromTryT(TryT[RAIIFuture, Value](ResourceT(future)))
