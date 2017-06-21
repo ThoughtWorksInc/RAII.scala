@@ -32,7 +32,7 @@ object covariant {
 
   /** The data structure that provides automatic resource management.
     *
-    * @example [[ResourceT]] can be used as a monad transformer for [[scalaz.Name]].
+    * @example `ResourceT` can be used as a monad transformer for [[scalaz.Name]
     *          {{{
     *          import scalaz.Name
     *          type RAII[A] = ResourceT[Name, A]
@@ -75,7 +75,7 @@ object covariant {
     *          tmpFile2 shouldNot exist
     *          }}}
     *
-    * @note This [[ResourceT]] type is an opacity alias to `F[Releasable[F, A]]`.
+    * @note This `ResourceT` type is an opacity alias to `F[Releasable[F, A]]`.
     *       All type classes and helper functions for this `ResourceT` type are defined in the companion object [[ResourceT$ ResourceT]]
     * @template
     */
@@ -122,7 +122,7 @@ object covariant {
 
   }
 
-  /** The companion object of [[ResourceT]].
+  /** The companion object of [[ResourceT]] that contains converters and type classes.
     *
     * @note There are some implicit method that provides [[scalaz.Monad]]s as monad transformers of `F`.
     *       Those monads running will collect all resources,
@@ -130,8 +130,10 @@ object covariant {
     */
   object ResourceT extends ResourceFactoryTInstances0 {
 
+    /** @group Converters */
     def apply[F[+ _], A](run: F[Releasable[F, A]]): ResourceT[F, A] = opacityTypes.apply(run)
 
+    /** @group Converters */
     def unapply[F[+ _], A](resourceT: ResourceT[F, A]): Some[F[Releasable[F, A]]] =
       Some(unwrap(resourceT))
 
@@ -146,15 +148,15 @@ object covariant {
       }
     }
 
-    /** Returns a `F` that perform following process:
+    /** Returns a `F` that performs the following process:
       *
-      * - Creating a [[Releasable]] for `A`
-      * - Closing the [[Releasable]]
-      * - Returning `A`
+      *  - Creating a [[Releasable]] for `A`
+      *  - Closing the [[Releasable]]
+      *  - Returning `A`
       */
     final def run[F[+ _], A](resourceT: ResourceT[F, A])(implicit monad: Bind[F]): F[A] = {
       unwrap(resourceT).flatMap { resource: Releasable[F, A] =>
-        resource.release.map { _ =>
+        resource.release().map { _ =>
           resource.value
         }
       }
@@ -218,6 +220,7 @@ object covariant {
       fa.map(_.right[S]).handleError(_.left[A].point[F])
     }
 
+    /** @group Type classes */
     implicit def resourceTParallelApplicative[F[+ _]](
         implicit F0: Applicative[
           Lambda[A => @@[F[A], Parallel]]
@@ -231,6 +234,7 @@ object covariant {
 
   private[raii] sealed abstract class ResourceFactoryTInstances3 {
 
+    /** @group Type classes */
     implicit def resourceTApplicative[F[+ _]: Applicative]: Applicative[ResourceT[F, ?]] =
       new ResourceFactoryTApplicative[F] {
         override private[raii] def typeClass = implicitly
@@ -239,6 +243,7 @@ object covariant {
 
   private[raii] sealed abstract class ResourceFactoryTInstances2 extends ResourceFactoryTInstances3 {
 
+    /** @group Type classes */
     implicit def resourceTMonad[F[+ _]: Monad]: Monad[ResourceT[F, ?]] = new ResourceFactoryTMonad[F] {
       private[raii] override def typeClass = implicitly
     }
@@ -246,6 +251,7 @@ object covariant {
 
   private[raii] sealed abstract class ResourceFactoryTInstances1 extends ResourceFactoryTInstances2 {
 
+    /** @group Type classes */
     implicit def resourceTNondeterminism[F[+ _]](implicit F0: Nondeterminism[F]): Nondeterminism[ResourceT[F, ?]] =
       new ResourceFactoryTNondeterminism[F] {
         private[raii] override def typeClass = implicitly
@@ -254,6 +260,7 @@ object covariant {
 
   private[raii] sealed abstract class ResourceFactoryTInstances0 extends ResourceFactoryTInstances1 {
 
+    /** @group Type classes */
     implicit def resourceTMonadError[F[+ _], S](implicit F0: MonadError[F, S]): MonadError[ResourceT[F, ?], S] =
       new ResourceFactoryTMonadError[F, S] {
         private[raii] override def typeClass = implicitly

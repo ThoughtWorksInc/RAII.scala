@@ -66,6 +66,7 @@ object asynchronous {
     *  - exception handling
     *  - automatic resource management
     *  - reference counting
+    *  - covariance
     *  - asynchronous programming
     *  - parallel computing
     *
