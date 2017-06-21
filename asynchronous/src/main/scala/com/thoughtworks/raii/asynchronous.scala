@@ -60,9 +60,9 @@ object asynchronous {
     }
   }
 
-  /** An universal monadic data type built-in many useful monad transformers.
+  /** An universal monadic data type that consists of many useful monad transformers.
     *
-    * Features of `Do`:
+    * == Features of `Do` ==
     *  - [[com.thoughtworks.tryt.covariant.TryT exception handling]]
     *  - [[com.thoughtworks.raii.covariant.ResourceT automatic resource management]]
     *  - [[Do$.shared reference counting]]
@@ -108,6 +108,7 @@ object asynchronous {
     */
   type ParallelDo[Value] = Do[Value] @@ Parallel
 
+  /** The companion object of [[ParallelDo]] */
   object ParallelDo {
 
     /** Returns an [[scalaz.Applicative Applicative]] type class for parallel computing.
@@ -119,7 +120,8 @@ object asynchronous {
       opacityTypes.doParallelApplicative
   }
 
-  /** @define now Converts a strict value to a `Do` whose [[covariant.Releasable.release release]] operation is no-op.
+  /** The companion object of [[Do]]
+    * @define now Converts a strict value to a `Do` whose [[covariant.Releasable.release release]] operation is no-op.
     *
     * @define seenow @see [[now]] for strict garbage collected `Do`
     *
