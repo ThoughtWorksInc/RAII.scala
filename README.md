@@ -25,7 +25,7 @@ and check the [Scaladoc](https://javadoc.io/page/com.thoughtworks.raii/asynchron
 `Do` consists of some monad transformers.
 The ability of resource management in `Do` is provided by the monad transformer `ResourceT`.
 
-You can combine `ResourceT` with other monads. For example, a resource manager in synchronous execution.
+You can combine `ResourceT` with monads other than `asynchronous.Do`. For example, a resource manager in synchronous execution.
 
 ### Covariant `ResourceT`
 
