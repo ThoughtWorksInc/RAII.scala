@@ -196,15 +196,7 @@ object covariant {
           releasableA <- unwrap(fa)
           releasableB <- unwrap(f(releasableA.value))
           _ <- releasableA.release()
-        } yield {
-          new Releasable[F, B] {
-            override def value: B = releasableB.value
-
-            override def release(): F[Unit] = {
-              releasableB.release()
-            }
-          }
-        }
+        } yield releasableB
       )
     }
     private[raii] final def foreach[F[+ _], A](resourceT: ResourceT[F, A],
@@ -344,9 +336,7 @@ object covariant {
     }
   }
 
-  private[raii] trait ResourceFactoryTMonad[F[+ _]]
-      extends ResourceFactoryTApplicative[F]
-      with Monad[ResourceT[F, ?]] {
+  private[raii] trait ResourceFactoryTMonad[F[+ _]] extends ResourceFactoryTApplicative[F] with Monad[ResourceT[F, ?]] {
     private[raii] implicit override def typeClass: Monad[F]
 
     override def bind[A, B](fa: ResourceT[F, A])(f: (A) => ResourceT[F, B]): ResourceT[F, B] = {
@@ -355,11 +345,14 @@ object covariant {
           releasableA <- unwrap(fa)
           releasableB <- unwrap(f(releasableA.value))
         } yield {
+          val b = releasableB.value
+          val releaseB = releasableB.release()
+          val releaseA = releasableA.release()
           new Releasable[F, B] {
-            override def value: B = releasableB.value
+            override def value: B = b
 
             override def release(): F[Unit] = {
-              releasableB.release() >> releasableA.release()
+              releaseB >> releaseA
             }
           }
         }
