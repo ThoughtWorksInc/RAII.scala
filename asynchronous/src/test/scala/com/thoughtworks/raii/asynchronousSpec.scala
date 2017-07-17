@@ -5,16 +5,16 @@ import java.io.StringWriter
 import com.thoughtworks.raii.asynchronous.Do
 
 import scalaz.syntax.all._
-import org.scalatest.{Assertion, FreeSpec, Matchers}
+import org.scalatest.{Assertion, AsyncFreeSpec, FreeSpec, Matchers}
 
 import scala.concurrent.Promise
-import org.scalatest.{FreeSpec, Matchers}
 import com.thoughtworks.raii.asynchronous.Do._
+import com.thoughtworks.raii.scalatest.ScalazTaskToScalaFuture
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-final class asynchronousSpec extends FreeSpec with Matchers {
+final class asynchronousSpec extends AsyncFreeSpec with Matchers with ScalazTaskToScalaFuture {
 
   "Given a scoped resource" - {
     var isSourceClosed = false
@@ -38,19 +38,33 @@ final class asynchronousSpec extends FreeSpec with Matchers {
       }
       "When map the new resource" - {
         "Then dependency resource should have been released" in {
-          val p = Promise[Assertion]
           Do.run(result.map { r =>
               isSourceClosed should be(true)
               isResultClosed should be(false)
             })
-            .unsafePerformAsync { either =>
+            .map { assertion =>
               isSourceClosed should be(true)
               isResultClosed should be(true)
-              p.complete(scalaz.std.`try`.fromDisjunction(either))
             }
-          p.future
         }
       }
     }
   }
+
+  "Nested flatMaps should be stack-safe" in {
+    def loop(acc: Int, i: Int = 0): Do[Int] = {
+      if (i < 30000) {
+        Do.now(i).flatMap { i =>
+          loop(acc + i, i + 1)
+        }
+      } else {
+        Do.now(acc)
+      }
+    }
+
+    Do.run(loop(0, 0)).map { i =>
+      i should be(1 until 30000 sum)
+    }
+  }
+
 }
