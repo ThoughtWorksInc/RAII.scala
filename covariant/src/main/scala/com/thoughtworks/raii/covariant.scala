@@ -46,8 +46,8 @@ object covariant {
     *          import java.io.File
     *          val resource: RAII[File] = ResourceT(Name(new Releasable[Name, File] {
     *            override val value: File = File.createTempFile("test", ".tmp");
-    *            override def release(): Name[Unit] = Name {
-    *              value.delete()
+    *            override val release: Name[Unit] = Name {
+    *              val isDeleted = value.delete()
     *            }
     *          }))
     *          }}}
@@ -98,18 +98,15 @@ object covariant {
       *         e.g. this [[Releasable]] is created from [[com.thoughtworks.raii.asynchronous.Do.scoped[Value<:AutoCloseable](value:=>Value)* scoped]],
       *       - or, [[value]] internally references some scoped native resources.
       */
-    def release(): F[Unit]
+    def release: F[Unit]
   }
 
   private[raii] object Releasable {
     @inline
-    def now[F[+ _]: Applicative, A](value: A): Releasable[F, A] = {
-      val value0 = value
-      val pointUnit = Applicative[F].point(())
+    def now[F[+ _]: Applicative, A](value0: A): Releasable[F, A] = {
       new Releasable[F, A] {
-        override def value: A = value0
-
-        override def release: F[Unit] = pointUnit
+        override val value: A = value0
+        override val release: F[Unit] = Applicative[F].point(())
       }
     }
   }
@@ -142,7 +139,7 @@ object covariant {
         implicit monad: Bind[F]): F[B] = {
       unwrap(resourceT).flatMap { fa =>
         f(fa.value).flatMap { a: B =>
-          fa.release().map { _ =>
+          fa.release.map { _ =>
             a
           }
         }
@@ -157,8 +154,9 @@ object covariant {
       */
     final def run[F[+ _], A](resourceT: ResourceT[F, A])(implicit monad: Bind[F]): F[A] = {
       unwrap(resourceT).flatMap { resource: Releasable[F, A] =>
-        resource.release().map { _ =>
-          resource.value
+        val value = resource.value
+        resource.release.map { _ =>
+          value
         }
       }
     }
@@ -172,11 +170,11 @@ object covariant {
       opacityTypes.apply(
         unwrap(fa).flatMap { releasableA =>
           val b = f(releasableA.value)
-          releasableA.release().map { _ =>
+          releasableA.release.map { _ =>
             new Releasable[F, B] {
-              override def value: B = b
+              override val value: B = b
 
-              override def release(): F[Unit] = {
+              override val release: F[Unit] = {
                 ().point[F]
               }
             }
@@ -195,7 +193,7 @@ object covariant {
         for {
           releasableA <- unwrap(fa)
           releasableB <- unwrap(f(releasableA.value))
-          _ <- releasableA.release()
+          _ <- releasableA.release
         } yield releasableB
       )
     }
@@ -204,7 +202,7 @@ object covariant {
       unwrap(resourceT)
         .flatMap { fa =>
           f(fa.value)
-          fa.release()
+          fa.release
         }
         .sequence_[Id.Id, Unit]
     }
@@ -276,11 +274,12 @@ object covariant {
     override def ap[A, B](fa: => ResourceT[F, A])(f: => ResourceT[F, (A) => B]): ResourceT[F, B] = {
       opacityTypes.apply(
         Applicative[F].apply2(unwrap(fa), unwrap(f)) { (releasableA, releasableF) =>
+          val releaseA = releasableA.release
           new Releasable[F, B] {
             override val value: B = releasableF.value(releasableA.value)
 
-            override def release(): F[Unit] = {
-              Applicative[F].apply2(releasableA.release(), releasableF.release()) { (_: Unit, _: Unit) =>
+            override val release: F[Unit] = {
+              Applicative[F].apply2(releaseA, releasableF.release) { (_: Unit, _: Unit) =>
                 ()
               }
             }
@@ -294,15 +293,27 @@ object covariant {
       extends Applicative[Lambda[A => ResourceT[F, A] @@ Parallel]] {
     private[raii] implicit def typeClass: Applicative[Lambda[A => F[A] @@ Parallel]]
 
+    override def map[A, B](pfa: ResourceT[F, A] @@ Parallel)(f: (A) => B): ResourceT[F, B] @@ Parallel = {
+      val Parallel(ResourceT(fa)) = pfa
+      val Parallel(fb) = typeClass.map(Parallel(fa)) { releasableA: Releasable[F, A] =>
+        val releasableB: Releasable[F, B] = new Releasable[F, B] {
+          override val value: B = f(releasableA.value)
+          override val release = releasableA.release
+        }
+        releasableB
+      }
+      Parallel(ResourceT(fb))
+    }
+
     override def point[A](a: => A): ResourceT[F, A] @@ Parallel = {
 
       Parallel({
         val fa: F[Releasable[F, A]] = Parallel.unwrap[F[Releasable[F, A]]](
           typeClass.point(
             new Releasable[F, A] {
-              override def value: A = a
+              override val value: A = a
 
-              override def release(): F[Unit] = Parallel.unwrap(typeClass.point(()))
+              override val release: F[Unit] = Parallel.unwrap(typeClass.point(()))
             }
           ))
         opacityTypes.apply(fa)
@@ -318,15 +329,17 @@ object covariant {
               Parallel(unwrap(Parallel.unwrap(fa))),
               Parallel(unwrap(Parallel.unwrap(f)))
             ) { (resourceA, resourceF) =>
+              val valueB = resourceF.value(resourceA.value)
+              val releaseA = resourceA.release
+              val releaseF = resourceF.release
               new Releasable[F, B] {
-                override val value: B = resourceF.value(resourceA.value)
+                override val value: B = valueB
 
-                override def release(): F[Unit] = {
-                  Parallel.unwrap[F[Unit]](
-                    typeClass.apply2(Parallel(resourceA.release()), Parallel(resourceF.release())) {
-                      (_: Unit, _: Unit) =>
-                        ()
-                    })
+                override val release: F[Unit] = {
+                  Parallel.unwrap[F[Unit]](typeClass.apply2(Parallel(releaseA), Parallel(releaseF)) {
+                    (_: Unit, _: Unit) =>
+                      ()
+                  })
                 }
               }
             }
@@ -346,12 +359,12 @@ object covariant {
           releasableB <- unwrap(f(releasableA.value))
         } yield {
           val b = releasableB.value
-          val releaseB = releasableB.release()
-          val releaseA = releasableA.release()
+          val releaseB = releasableB.release
+          val releaseA = releasableA.release
           new Releasable[F, B] {
             override def value: B = b
 
-            override def release(): F[Unit] = {
+            override val release: F[Unit] = {
               releaseB >> releaseA
             }
           }
@@ -385,22 +398,23 @@ object covariant {
           case \/-(releasableA) =>
             catchError(unwrap(f(releasableA.value))).flatMap[Releasable[F, B]] {
               case \/-(releasableB) =>
-                new Releasable[F, B] {
-                  override def value: B = releasableB.value
+                val wrappedReleasableB: Releasable[F, B] = new Releasable[F, B] {
+                  override val value: B = releasableB.value
 
-                  override def release(): F[Unit] = {
-                    catchError(releasableB.release()).flatMap {
+                  override val release: F[Unit] = {
+                    catchError(releasableB.release).flatMap {
                       case \/-(()) =>
-                        releasableA.release()
+                        releasableA.release
                       case -\/(s) =>
-                        releasableA.release().flatMap { _ =>
+                        releasableA.release.flatMap { _ =>
                           typeClass.raiseError[Unit](s)
                         }
                     }
                   }
-                }.point[F]
+                }
+                wrappedReleasableB.point[F]
               case -\/(s) =>
-                releasableA.release().flatMap { _ =>
+                releasableA.release.flatMap { _ =>
                   typeClass.raiseError[Releasable[F, B]](s)
                 }
             }
@@ -427,7 +441,7 @@ object covariant {
                   opacityTypes.apply[F, A](residual)
                 })
 
-              override def release(): F[Unit] = fa.release()
+              override val release: F[Unit] = fa.release
             }
 
         }

@@ -2,6 +2,7 @@ package com.thoughtworks.raii
 
 import java.io.StringWriter
 
+import com.thoughtworks.future.Future
 import com.thoughtworks.raii.asynchronous.Do
 
 import scalaz.syntax.all._
@@ -10,6 +11,8 @@ import org.scalatest.{Assertion, AsyncFreeSpec, FreeSpec, Matchers}
 import scala.concurrent.Promise
 import com.thoughtworks.raii.asynchronous.Do._
 import com.thoughtworks.raii.scalatest.ScalazTaskToScalaFuture
+
+import scalaz.Trampoline
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
@@ -38,14 +41,20 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ScalazTask
       }
       "When map the new resource" - {
         "Then dependency resource should have been released" in {
-          Do.run(result.map { r =>
+          val p = Promise[Assertion]
+          Future
+            .run(Do.run(result.map { r =>
               isSourceClosed should be(true)
               isResultClosed should be(false)
-            })
-            .map { assertion =>
+            })) { either =>
               isSourceClosed should be(true)
               isResultClosed should be(true)
+              Trampoline.delay {
+                val _ = p.complete(either)
+              }
             }
+            .run
+          p.future
         }
       }
     }
@@ -63,7 +72,7 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ScalazTask
     }
 
     Do.run(loop(0, 0)).map { i =>
-      i should be(1 until 30000 sum)
+      i should be((1 until 30000).sum)
     }
   }
 

@@ -2,12 +2,13 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.atomic.AtomicReference
 
-import com.thoughtworks.raii.covariant.{ResourceT, Releasable}
+import com.thoughtworks.future.continuation.Continuation
+import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
 
 import scala.annotation.tailrec
 import scala.collection.immutable.Queue
 import scalaz.Free.Trampoline
-import scalaz.concurrent.Future
+import scalaz.Trampoline
 import scalaz.syntax.all._
 import scalaz.std.iterable._
 
@@ -18,65 +19,63 @@ object shared {
 
   private[shared] sealed trait State[A]
   private[shared] final case class Closed[A]() extends State[A]
-  private[shared] final case class Opening[A](handlers: Queue[Releasable[Future, A] => Trampoline[Unit]])
+  private[shared] final case class Opening[A](handlers: Queue[Releasable[Continuation, A] => Trampoline[Unit]])
       extends State[A]
-  private[shared] final case class Open[A](data: Releasable[Future, A], count: Int) extends State[A]
+  private[shared] final case class Open[A](data: Releasable[Continuation, A], count: Int) extends State[A]
 
-  implicit final class SharedOps[A](raii: ResourceT[Future, A]) {
+  implicit final class SharedOps[A](raii: ResourceT[Continuation, A]) {
 
-    def shared: ResourceT[Future, A] = {
+    def shared: ResourceT[Continuation, A] = {
       val sharedReference = new SharedStateMachine(raii)
-      ResourceT[Future, A](
-        Future.Async { (handler: Releasable[Future, A] => Trampoline[Unit]) =>
-          sharedReference.acquire(handler)
-        }
-      )
+      ResourceT[Continuation, A](sharedReference.acquire)
     }
 
   }
 
-  private[shared] final class SharedStateMachine[A](underlying: ResourceT[Future, A])
+  private[shared] final class SharedStateMachine[A](underlying: ResourceT[Continuation, A])
       extends AtomicReference[State[A]](Closed())
-      with Releasable[Future, A] {
+      with Releasable[Continuation, A] {
     private def sharedCloseable = this
     override def value: A = state.get().asInstanceOf[Open[A]].data.value
 
-    override def release(): Future[Unit] = Future.Suspend { () =>
-      @tailrec
-      def retry(): Future[Unit] = {
-        state.get() match {
-          case oldState @ Open(data, count) =>
-            if (count == 1) {
-              if (state.compareAndSet(oldState, Closed())) {
-                data.release()
+    override def release: Continuation[Unit] = {
+      Continuation.shift { continue =>
+        @tailrec
+        def retry(): Trampoline[Unit] = {
+          state.get() match {
+            case oldState @ Open(data, count) =>
+              if (count == 1) {
+                if (state.compareAndSet(oldState, Closed())) {
+                  Continuation.run(data.release)(continue)
+                } else {
+                  retry()
+                }
               } else {
-                retry()
+                if (state.compareAndSet(oldState, oldState.copy(count = count - 1))) {
+                  Trampoline.suspend(continue(()))
+                } else {
+                  retry()
+                }
               }
-            } else {
-              if (state.compareAndSet(oldState, oldState.copy(count = count - 1))) {
-                Future.now(())
-              } else {
-                retry()
-              }
-            }
-          case Opening(_) | Closed() =>
-            throw new IllegalStateException("Cannot release more than once")
+            case Opening(_) | Closed() =>
+              throw new IllegalStateException("Cannot release more than once")
 
+          }
         }
+        retry()
       }
-      retry()
     }
 
     private def state = this
 
     @tailrec
-    private def complete(data: Releasable[Future, A]): Trampoline[Unit] = {
+    private def complete(data: Releasable[Continuation, A]): Trampoline[Unit] = {
       state.get() match {
         case oldState @ Opening(handlers) =>
           val newState = Open(data, handlers.length)
           if (state.compareAndSet(oldState, newState)) {
-            handlers.traverse_ { f: (Releasable[Future, A] => Trampoline[Unit]) =>
-              f(sharedCloseable)
+            handlers.traverse_ { continue: (Releasable[Continuation, A] => Trampoline[Unit]) =>
+              Trampoline.suspend(continue(sharedCloseable))
             }
           } else {
             complete(data)
@@ -86,30 +85,33 @@ object shared {
       }
     }
 
-    @tailrec
-    private[shared] def acquire(handler: Releasable[Future, A] => Trampoline[Unit]): Unit = {
-      state.get() match {
-        case oldState @ Closed() =>
-          if (state.compareAndSet(oldState, Opening(Queue(handler)))) {
-            val ResourceT(future) = underlying
-            future.unsafePerformListen(complete)
-          } else {
-            acquire(handler)
-          }
-        case oldState @ Opening(handlers: Queue[Releasable[Future, A] => Trampoline[Unit]]) =>
-          if (state.compareAndSet(oldState, Opening(handlers.enqueue(handler)))) {
-            ()
-          } else {
-            acquire(handler)
-          }
-        case oldState @ Open(data, count) =>
-          if (state.compareAndSet(oldState, oldState.copy(count = count + 1))) {
-            handler(sharedCloseable).run
-          } else {
-            acquire(handler)
-          }
-      }
+    private[shared] def acquire: Continuation[Releasable[Continuation, A]] = {
+      @tailrec
+      def retry(handler: Releasable[Continuation, A] => Trampoline[Unit]): Trampoline[Unit] = {
+        state.get() match {
+          case oldState @ Closed() =>
+            if (state.compareAndSet(oldState, Opening(Queue(handler)))) {
+              val ResourceT(continuation) = underlying
+              Continuation.run(continuation)(complete)
+            } else {
+              retry(handler)
+            }
+          case oldState @ Opening(handlers: Queue[Releasable[Continuation, A] => Trampoline[Unit]]) =>
+            if (state.compareAndSet(oldState, Opening(handlers.enqueue(handler)))) {
+              Trampoline.done(())
+            } else {
+              retry(handler)
+            }
+          case oldState @ Open(data, count) =>
+            if (state.compareAndSet(oldState, oldState.copy(count = count + 1))) {
+              handler(sharedCloseable)
+            } else {
+              retry(handler)
+            }
+        }
 
+      }
+      Continuation.shift(retry)
     }
   }
 
