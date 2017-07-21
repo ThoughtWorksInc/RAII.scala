@@ -161,12 +161,15 @@ object covariant {
       }
     }
 
-    /** Returns a resource of `B` based on a resource of `A` and a function that creates `B`.
+    /** Returns a resource of `B` based on a resource of `A` and a function that creates `B`,
+      * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
-      * @note `releaseMap` is to `map` in [[resourceTMonad]],
-      *       except `releaseMap` will release `A` right after `B` is created.
+      * @note `nonTransitiveMap` is to `map` in [[resourceTMonad]],
+      *       except `nonTransitiveMap` will release `A` right after `B` is created.
+      *
+      *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def releaseMap[F[+ _]: Monad, A, B](fa: ResourceT[F, A])(f: A => B): ResourceT[F, B] = {
+    def nonTransitiveMap[F[+ _]: Monad, A, B](fa: ResourceT[F, A])(f: A => B): ResourceT[F, B] = {
       opacityTypes.apply(
         unwrap(fa).flatMap { releasableA =>
           val b = f(releasableA.value)
@@ -183,12 +186,15 @@ object covariant {
       )
     }
 
-    /** Returns a resource of `B` based on a resource of `A` and a function that creates resource of `B`.
+    /** Returns a resource of `B` based on a resource of `A` and a function that creates resource of `B`,
+      * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
-      * @note `releaseFlatMap` is similar to `flatMap` in [[resourceTMonad]],
-      *       except `releaseFlatMap` will release `A` right after `B` is created.
+      * @note `nonTransitiveFlatMap` is similar to `flatMap` in [[resourceTMonad]],
+      *       except `nonTransitiveFlatMap` will release `A` right after `B` is created.
+      *
+      *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def releaseFlatMap[F[+ _]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
+    def nonTransitiveFlatMap[F[+ _]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
       opacityTypes.apply(
         for {
           releasableA <- unwrap(fa)

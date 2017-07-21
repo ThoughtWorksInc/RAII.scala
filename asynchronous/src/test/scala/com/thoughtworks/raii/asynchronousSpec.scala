@@ -30,7 +30,7 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ScalazTask
     })
     "And flatMap the resource to an new autoReleaseDependencies resource" - {
       var isResultClosed = false
-      val result = Do.releaseFlatMap(source) { sourceCloseable =>
+      val result = Do.nonTransitiveFlatMap(source) { sourceCloseable =>
         Do.scoped(new AutoCloseable {
           isResultClosed should be(false)
           override def close(): Unit = {
