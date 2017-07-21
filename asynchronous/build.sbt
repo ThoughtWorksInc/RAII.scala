@@ -1,4 +1,4 @@
-libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % Test
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.3" % Test
 
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
 
