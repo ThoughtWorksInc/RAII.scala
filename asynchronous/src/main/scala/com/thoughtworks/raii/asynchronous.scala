@@ -142,7 +142,7 @@ object asynchronous {
     * @define nonstrict Since the `Do` is non-strict,
     *                   `Value` will be recreated each time it is sequenced into a larger `Do`.
     *
-    * @define garbageCollected [[Value]] must be a garbage-collected type that does not hold native resource.
+    * @define garbageCollected `Value` must be a garbage-collected type that does not hold native resource.
     */
   object Do {
 
@@ -228,8 +228,10 @@ object asynchronous {
 
     /** $delay
       * $nonstrict
+      * $garbageCollected
       * $seenow
       * $seescoped
+      * $seedelay
       */
     def garbageCollected[Value](future: Future[Value]): Do[Value] = {
       val Future(TryT(continuation)) = future
@@ -242,8 +244,10 @@ object asynchronous {
 
     /** $delay
       * $nonstrict
+      * $garbageCollected
       * $seenow
       * $seescoped
+      * $seedelay
       */
     def garbageCollected[Value](continuation: UnitContinuation[Value],
                                 dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
@@ -252,8 +256,10 @@ object asynchronous {
 
     /** $delay
       * $nonstrict
+      * $garbageCollected
       * $seenow
       * $seescoped
+      * $seedelay
       */
     def garbageCollected[Value](contT: ContT[Trampoline, Unit, Value]): Do[Value] = {
       garbageCollected(Future(TryT(Continuation(ContT { continue: (Try[Value] => Trampoline[Unit]) =>
@@ -265,6 +271,7 @@ object asynchronous {
 
     /** $delay
       * $nonstrict
+      * $garbageCollected
       * $seenow
       * $seescoped
       */
@@ -273,6 +280,7 @@ object asynchronous {
     }
 
     /** $now
+      * $garbageCollected
       * $seedelay
       * $seescoped
       */
@@ -361,7 +369,7 @@ object asynchronous {
       Do.fromContinuation(future)
     }
 
-    /** Converts `doValue` to a reference counted wrapper `Do`.
+    /** Converts `doValue` to a reference counted wrapper.
       *
       * When the wrapper `Do` is used by multiple larger `Do` at the same time,
       * only one `Value` instance is created.
