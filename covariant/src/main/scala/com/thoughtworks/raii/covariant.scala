@@ -164,12 +164,12 @@ object covariant {
     /** Returns a resource of `B` based on a resource of `A` and a function that creates `B`,
       * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
-      * @note `nonTransitiveMap` is to `map` in [[resourceTMonad]],
-      *       except `nonTransitiveMap` will release `A` right after `B` is created.
+      * @note `intransitiveMap` is to `map` in [[resourceTMonad]],
+      *       except `intransitiveMap` will release `A` right after `B` is created.
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def nonTransitiveMap[F[+ _]: Monad, A, B](fa: ResourceT[F, A])(f: A => B): ResourceT[F, B] = {
+    def intransitiveMap[F[+ _]: Monad, A, B](fa: ResourceT[F, A])(f: A => B): ResourceT[F, B] = {
       opacityTypes.apply(
         unwrap(fa).flatMap { releasableA =>
           val b = f(releasableA.value)
@@ -189,12 +189,12 @@ object covariant {
     /** Returns a resource of `B` based on a resource of `A` and a function that creates resource of `B`,
       * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
-      * @note `nonTransitiveFlatMap` is similar to `flatMap` in [[resourceTMonad]],
-      *       except `nonTransitiveFlatMap` will release `A` right after `B` is created.
+      * @note `intransitiveFlatMap` is similar to `flatMap` in [[resourceTMonad]],
+      *       except `intransitiveFlatMap` will release `A` right after `B` is created.
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def nonTransitiveFlatMap[F[+ _]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
+    def intransitiveFlatMap[F[+ _]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
       opacityTypes.apply(
         for {
           releasableA <- unwrap(fa)

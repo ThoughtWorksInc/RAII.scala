@@ -334,14 +334,14 @@ object asynchronous {
     /** Returns a `Do` of `B` based on a `Do` of `Value` and a function that creates a `Do` of `B`,
       * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
-      * @note `nonTransitiveFlatMap` is similar to `flatMap` in [[doMonadErrorInstances]],
-      *       except `nonTransitiveFlatMap` will release `Value` right after `B` is created.
+      * @note `intransitiveFlatMap` is similar to `flatMap` in [[doMonadErrorInstances]],
+      *       except `intransitiveFlatMap` will release `Value` right after `B` is created.
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def nonTransitiveFlatMap[Value, B](doValue: Do[Value])(f: Value => Do[B]): Do[B] = {
+    def intransitiveFlatMap[Value, B](doValue: Do[Value])(f: Value => Do[B]): Do[B] = {
       val resourceA = ResourceT(Do.unwrap(doValue))
-      val resourceB = ResourceT.nonTransitiveFlatMap[UnitContinuation, Try[Value], Try[B]](resourceA) {
+      val resourceB = ResourceT.intransitiveFlatMap[UnitContinuation, Try[Value], Try[B]](resourceA) {
         case Failure(e) =>
           ResourceT(Continuation.now(Releasable.now(Failure(e))))
         case Success(value) =>
@@ -354,14 +354,14 @@ object asynchronous {
     /** Returns a `Do` of `B` based on a `Do` of `Value` and a function that creates `B`,
       * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
-      * @note `nonTransitiveMap` is similar to `map` in [[doMonadErrorInstances]],
-      *       except `nonTransitiveMap` will release `Value` right after `B` is created.
+      * @note `intransitiveMap` is similar to `map` in [[doMonadErrorInstances]],
+      *       except `intransitiveMap` will release `Value` right after `B` is created.
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def nonTransitiveMap[Value, B](doValue: Do[Value])(f: Value => B): Do[B] = {
+    def intransitiveMap[Value, B](doValue: Do[Value])(f: Value => B): Do[B] = {
       val resourceA = ResourceT(Do.unwrap(doValue))
-      val resourceB = ResourceT.nonTransitiveMap(resourceA)(_.map(f))
+      val resourceB = ResourceT.intransitiveMap(resourceA)(_.map(f))
       val ResourceT(future) = resourceB
       Do(future)
     }
