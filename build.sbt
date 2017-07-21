@@ -55,7 +55,8 @@ lazy val unidoc = project
       inDependencies(asynchronous, transitive = true, includeRoot = true) || inProjects(invariantJVM)
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
-    scalacOptions += "-Xexperimental"
+    scalacOptions += "-Xexperimental",
+    scalacOptions += "-Ypartial-unification"
   )
 
 organization in ThisBuild := "com.thoughtworks.raii"

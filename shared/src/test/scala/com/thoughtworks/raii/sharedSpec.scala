@@ -2,8 +2,8 @@ package com.thoughtworks.raii
 
 import com.thoughtworks.future.Future
 import Future._
-import com.thoughtworks.future.continuation.Continuation
-import Continuation._
+import com.thoughtworks.future.continuation.{Continuation, UnitContinuation}
+import com.thoughtworks.future.continuation.Continuation._
 import com.thoughtworks.raii.sharedSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.sharedSpec._
 import com.thoughtworks.raii.shared.SharedOps
@@ -87,9 +87,10 @@ object sharedSpec {
     }
   }
 
-  def raiiFutureMonad: Monad[RAIIContinuation] = ResourceT.resourceTMonad[Continuation](Continuation.continuationMonad)
+  def raiiFutureMonad: Monad[RAIIContinuation] =
+    ResourceT.resourceTMonad[UnitContinuation](Continuation.continuationMonad)
 
-  type RAIIContinuation[+A] = ResourceT[Continuation, A]
+  type RAIIContinuation[+A] = ResourceT[UnitContinuation, A]
 
   type RAIIFuture[+A] = TryT[RAIIContinuation, A]
 
@@ -118,13 +119,13 @@ object sharedSpec {
 
   class FutureAsyncFakeResource(
       allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource],
-      allCallBack: mutable.HashMap[String, Releasable[Continuation, String] => Trampoline[Unit]],
+      allCallBack: mutable.HashMap[String, Releasable[UnitContinuation, String] => Trampoline[Unit]],
       idGenerator: () => String)
       extends FutureDelayFakeResource(allOpenedResources, idGenerator) {
 
-    override def apply(): Continuation[Releasable[Continuation, String]] = {
+    override def apply(): UnitContinuation[Releasable[UnitContinuation, String]] = {
 
-      Continuation.shift { f => //: (Releasable[Continuation, String] => Unit)
+      Continuation.apply { f => //: (Releasable[UnitContinuation, String] => Unit)
         if (allOpenedResources.contains(id)) {
           throw CanNotOpenResourceTwice()
         }
@@ -150,13 +151,13 @@ object sharedSpec {
       allOpenedResources(id) = this
     }
 
-    def apply(): Continuation[Releasable[Continuation, String]] = {
+    def apply(): UnitContinuation[Releasable[UnitContinuation, String]] = {
       appendThisToAllOpenedResources()
       Continuation.delay(
-        new Releasable[Continuation, String] {
+        new Releasable[UnitContinuation, String] {
           override def value: String = id
 
-          override def release: Continuation[Unit] = Continuation.delay {
+          override def release: UnitContinuation[Unit] = Continuation.delay {
             val removed = allOpenedResources.remove(id)
             removed match {
               case Some(_) =>
@@ -175,25 +176,25 @@ object sharedSpec {
 
 class sharedSpec extends AsyncFreeSpec with Matchers with Inside with ContinuationToScalaFuture {
   import sharedSpec._
-  "when working with scalaz's Continuation, it must asynchronously acquire and release" in {
+  "when working with scalaz's UnitContinuation, it must asynchronously acquire and release" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managedT[Continuation, FakeResource](new FakeResource(allOpenedResources, "r0"))
+    val mr0 = managedT[UnitContinuation, FakeResource](new FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
-    val asynchronousResource: Continuation[Assertion] = using[Continuation, FakeResource, Assertion](mr0, r0 => {
-      Continuation.delay {
-        events += "using r0"
-        allOpenedResources("r0") should be(r0)
-      }
-    })
+    val asynchronousResource: UnitContinuation[Assertion] =
+      using[UnitContinuation, FakeResource, Assertion](mr0, r0 => {
+        Continuation.delay {
+          events += "using r0"
+          allOpenedResources("r0") should be(r0)
+        }
+      })
 
     val p = Promise[Assertion]
-    Continuation.listen(asynchronousResource) { _ =>
-      p.success {
+    Continuation.onComplete(asynchronousResource) { _ =>
+      val _ = p.success {
         allOpenedResources.keys shouldNot contain("r0")
         events should be(Seq("using r0"))
       }
-      Trampoline.done(())
     }
 
     p.future
@@ -214,16 +215,14 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       })
 
       val p = Promise[Assertion]
-      Future.listen(asynchronousResource) {
+      Future.onComplete(asynchronousResource) {
         case scala.util.Failure(e) =>
-          p.failure(e)
-          Trampoline.done(())
+          val _ = p.failure(e)
         case Success(_) =>
-          p.success {
+          val _ = p.success {
             allOpenedResources.keys shouldNot contain("r0")
             events should be(Seq("using r0"))
           }
-          Trampoline.done(())
       }
 
       p.future
@@ -234,14 +233,14 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
 
-    val sharedResource: ResourceT[Continuation, FakeResource] =
-      managedT[Continuation, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+    val sharedResource: ResourceT[UnitContinuation, FakeResource] =
+      managedT[UnitContinuation, FakeResource](new FakeResource(allOpenedResources, "0")).shared
 
     allOpenedResources.keys shouldNot contain("0")
 
     import com.thoughtworks.raii.covariant.ResourceT.resourceTMonad
 
-    val usingResource: ResourceT[Continuation, mutable.Buffer[String]] = sharedResource.flatMap { r1 =>
+    val usingResource: ResourceT[UnitContinuation, mutable.Buffer[String]] = sharedResource.flatMap { r1 =>
       sharedResource.map { r2 =>
         r1 should be(r2)
         allOpenedResources.keys should contain("0")
@@ -249,7 +248,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       }
     }
 
-    val asynchronousResource: Continuation[mutable.Buffer[String]] = ResourceT.run(usingResource)
+    val asynchronousResource: UnitContinuation[mutable.Buffer[String]] = ResourceT.run(usingResource)
 
     allOpenedResources.keys shouldNot contain("0")
 
@@ -264,13 +263,13 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val sharedResource: ResourceT[Continuation, String] =
+    val sharedResource: ResourceT[UnitContinuation, String] =
       ResourceT(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
     import com.thoughtworks.raii.covariant.ResourceT.resourceTMonad
 
-    val pf: RAIIFuture[String] = TryT[ResourceT[Continuation, `+?`], String](
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
+    val pf: RAIIFuture[String] = TryT[ResourceT[UnitContinuation, `+?`], String](
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
     )
 
     val parallelPf = Parallel(pf)
@@ -281,26 +280,25 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Continuation, `+?`]].map(parallelPf) { a =>
+      tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].map(parallelPf) { a =>
         events += "using a"
         a
       }
 
-    val result: TryT[ResourceT[Continuation, `+?`], String] = Parallel.unwrap(parallelResult)
+    val result: TryT[ResourceT[UnitContinuation, `+?`], String] = Parallel.unwrap(parallelResult)
 
-    val resourceFactoryFutureString: ResourceT[Continuation, Try[String]] =
-      TryT.unwrap[ResourceT[Continuation, `+?`], String](result)
+    val resourceFactoryFutureString: ResourceT[UnitContinuation, Try[String]] =
+      TryT.unwrap[ResourceT[UnitContinuation, `+?`], String](result)
 
-    val future: Continuation[Try[String]] = ResourceT.run(resourceFactoryFutureString)
+    val future: UnitContinuation[Try[String]] = ResourceT.run(resourceFactoryFutureString)
 
     val p = Promise[Assertion]
 
-    Continuation.listen(future) { _ =>
-      p.success {
+    Continuation.onComplete(future) { _ =>
+      val _ = p.success {
         allOpenedResources.keys shouldNot contain("0")
         events should be(Seq("using a"))
       }
-      Trampoline.done(())
     }
     p.future
   }
@@ -309,14 +307,14 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val sharedResource: ResourceT[Continuation, String] =
+    val sharedResource: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
-    val pf1: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
+    val pf1: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
 
-    val pf2: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
+    val pf2: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -330,25 +328,23 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Continuation, `+?`]].apply2(parallelPf1, parallelPf2) {
+      tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply2(parallelPf1, parallelPf2) {
         (a: String, b: String) =>
           events += "using a & b"
           a + b
       }
 
     val Parallel(TryT(raiiFuture)) = parallelResult
-    val future: Continuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
 
     val p = Promise[Assertion]
 
-    Continuation.listen(future) { either =>
+    Continuation.onComplete(future) { either =>
       inside(either) {
         case Success(value) =>
-          Trampoline.delay {
-            val _ = p.success {
-              value should be("00")
-              events should be(Seq("using a & b"))
-            }
+          val _ = p.success {
+            value should be("00")
+            events should be(Seq("using a & b"))
           }
       }
     }
@@ -359,16 +355,16 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val sharedResource: ResourceT[Continuation, String] =
+    val sharedResource: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
-    val pf1: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(sharedResource) { Try(_) }
+    val pf1: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(sharedResource) { Try(_) }
 
     val trypf1 = TryT(pf1)
 
     val parallelPf1 = Parallel(trypf1)
-    val parallelPf2 = Parallel(TryT.tryTMonadError[ResourceT[Continuation, `+?`]].raiseError[String](Boom()))
+    val parallelPf2 = Parallel(TryT.tryTMonadError[ResourceT[UnitContinuation, `+?`]].raiseError[String](Boom()))
 
     import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
     import com.thoughtworks.future.continuation.Continuation.continuationParallelApplicative
@@ -376,7 +372,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Continuation, `+?`]].apply2(parallelPf1, parallelPf2) {
+      tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply2(parallelPf1, parallelPf2) {
         (a: String, b: String) =>
           events += "using a & b"
           a + b
@@ -384,18 +380,17 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val result: RAIIFuture[String] = Parallel.unwrap(parallelResult)
     val raiiFuture: RAIIContinuation[Try[String]] = TryT.unapply(result).get
-    val future: Continuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
 
     val p = Promise[Assertion]
 
-    Continuation.listen(future) { either =>
+    Continuation.onComplete(future) { either =>
       inside(either) {
         case scala.util.Failure(e) =>
-          p.success {
+          val _ = p.success {
             e should be(a[Boom])
             events should be(Seq())
           }
-          Trampoline.done(())
       }
     }
     p.future
@@ -405,19 +400,19 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val resource0: ResourceT[Continuation, String] =
+    val resource0: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply())
-    val resource1: ResourceT[Continuation, String] =
+    val resource1: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "1").apply()).shared
 
-    val pf1: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource0) { Try(_) }
+    val pf1: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource0) { Try(_) }
 
-    val pf2: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+    val pf2: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
 
-    val pf3: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+    val pf3: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -433,7 +428,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Continuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+      tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
         (a: String, b: String, c: String) =>
           events += "using a & b & c"
           a + b + c
@@ -441,18 +436,17 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val result: RAIIFuture[String] = Parallel.unwrap(parallelResult)
     val raiiFuture: RAIIContinuation[Try[String]] = TryT.unapply(result).get
-    val future: Continuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
 
     val p = Promise[Assertion]
 
-    Continuation.listen(future) { either =>
+    Continuation.onComplete(future) { either =>
       inside(either) {
         case Success(value) =>
-          p.success {
+          val _ = p.success {
             value should be("011")
             events should be(Seq("using a & b & c"))
           }
-          Trampoline.done(())
       }
     }
     p.future
@@ -462,21 +456,21 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val allCallBack = mutable.HashMap.empty[String, Releasable[Continuation, String] => Trampoline[Unit]]
+    val allCallBack = mutable.HashMap.empty[String, Releasable[UnitContinuation, String] => Trampoline[Unit]]
 
-    val resource0: ResourceT[Continuation, String] =
+    val resource0: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "0").apply())
-    val resource1: ResourceT[Continuation, String] =
+    val resource1: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "1").apply()).shared
 
-    val pf1: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource0) { Try(_) }
+    val pf1: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource0) { Try(_) }
 
-    val pf2: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+    val pf2: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
 
-    val pf3: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+    val pf3: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -492,7 +486,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Continuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+      tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
         (a: String, b: String, c: String) =>
           events += "using a & b & c"
           a + b + c
@@ -500,29 +494,26 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val result: RAIIFuture[String] = Parallel.unwrap(parallelResult)
     val raiiFuture: RAIIContinuation[Try[String]] = TryT.unapply(result).get
-    val future: Continuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
 
     val p = Promise[Assertion]
 
-    Continuation.listen(future) {
+    Continuation.onComplete(future) {
       case Success(value) =>
-        Trampoline.delay {
-          val _ = p.success {
-            value should be("011")
-            events should be(Seq("using a & b & c"))
-          }
+        val _ = p.success {
+          value should be("011")
+          events should be(Seq("using a & b & c"))
+
         }
       case scala.util.Failure(e) =>
-        Trampoline.delay {
-          val _ = p.failure(e)
-        }
+        val _ = p.failure(e)
     }
 
     allCallBack.foreach { callBackTuple =>
-      val releasable = new Releasable[Continuation, String] {
+      val releasable = new Releasable[UnitContinuation, String] {
         override def value: String = callBackTuple._1
 
-        override def release: Continuation[Unit] = Continuation.delay {
+        override def release: UnitContinuation[Unit] = Continuation.delay {
           val removed = allOpenedResources.remove(callBackTuple._1)
 
           removed match {
@@ -543,23 +534,23 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val allAcquireCallBack = mutable.HashMap.empty[String, Releasable[Continuation, String] => Trampoline[Unit]]
+    val allAcquireCallBack = mutable.HashMap.empty[String, Releasable[UnitContinuation, String] => Trampoline[Unit]]
 
-    val resource0: ResourceT[Continuation, String] =
+    val resource0: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "0").apply())
-    val resource1: ResourceT[Continuation, String] =
+    val resource1: ResourceT[UnitContinuation, String] =
       ResourceT
         .apply(new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "1").apply())
         .shared
 
-    val pf1: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource0) { Try(_) }
+    val pf1: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource0) { Try(_) }
 
-    val pf2: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+    val pf2: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
 
-    val pf3: ResourceT[Continuation, Try[String]] =
-      resourceTMonad[Continuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+    val pf3: ResourceT[UnitContinuation, Try[String]] =
+      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -575,7 +566,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
-      tryTParallelApplicative[ResourceT[Continuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
+      tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
         (a: String, b: String, c: String) =>
           events += "using a & b & c"
           a + b + c
@@ -583,32 +574,28 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val result: RAIIFuture[String] = Parallel.unwrap(parallelResult)
     val raiiFuture: RAIIContinuation[Try[String]] = TryT.unapply(result).get
-    val future: Continuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
 
     val p = Promise[Assertion]
 
-    Continuation.listen(future) {
+    Continuation.onComplete(future) {
       case Success(value) =>
-        Trampoline.delay {
-          val _ = p.success {
-            value should be("011")
-            events should be(Seq("using a & b & c"))
-          }
+        val _ = p.success {
+          value should be("011")
+          events should be(Seq("using a & b & c"))
         }
       case scala.util.Failure(e) =>
-        Trampoline.delay {
-          val _ = p.failure(e)
-        }
+        val _ = p.failure(e)
     }
 
     val allReleaseCallBack = mutable.HashMap.empty[String, Unit => Trampoline[Unit]]
 
     allAcquireCallBack.foreach { callBackTuple =>
-      val releasable = new Releasable[Continuation, String] {
+      val releasable = new Releasable[UnitContinuation, String] {
         override def value: String = callBackTuple._1
 
-        override def release(): Continuation[Unit] = {
-          Continuation.shift { f =>
+        override def release: UnitContinuation[Unit] = {
+          Continuation { f =>
             allReleaseCallBack(callBackTuple._1) = f
             Trampoline.done(())
           }

@@ -2,7 +2,7 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.atomic.AtomicReference
 
-import com.thoughtworks.future.continuation.Continuation
+import com.thoughtworks.future.continuation.{Continuation, UnitContinuation}
 import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
 
 import scala.annotation.tailrec
@@ -19,27 +19,27 @@ object shared {
 
   private[shared] sealed trait State[A]
   private[shared] final case class Closed[A]() extends State[A]
-  private[shared] final case class Opening[A](handlers: Queue[Releasable[Continuation, A] => Trampoline[Unit]])
+  private[shared] final case class Opening[A](handlers: Queue[Releasable[UnitContinuation, A] => Trampoline[Unit]])
       extends State[A]
-  private[shared] final case class Open[A](data: Releasable[Continuation, A], count: Int) extends State[A]
+  private[shared] final case class Open[A](data: Releasable[UnitContinuation, A], count: Int) extends State[A]
 
-  implicit final class SharedOps[A](raii: ResourceT[Continuation, A]) {
+  implicit final class SharedOps[A](raii: ResourceT[UnitContinuation, A]) {
 
-    def shared: ResourceT[Continuation, A] = {
+    def shared: ResourceT[UnitContinuation, A] = {
       val sharedReference = new SharedStateMachine(raii)
-      ResourceT[Continuation, A](sharedReference.acquire)
+      ResourceT[UnitContinuation, A](sharedReference.acquire)
     }
 
   }
 
-  private[shared] final class SharedStateMachine[A](underlying: ResourceT[Continuation, A])
+  private[shared] final class SharedStateMachine[A](underlying: ResourceT[UnitContinuation, A])
       extends AtomicReference[State[A]](Closed())
-      with Releasable[Continuation, A] {
+      with Releasable[UnitContinuation, A] {
     private def sharedCloseable = this
     override def value: A = state.get().asInstanceOf[Open[A]].data.value
 
-    override def release: Continuation[Unit] = {
-      Continuation.shift { continue =>
+    override def release: UnitContinuation[Unit] = {
+      Continuation.apply { continue =>
         @tailrec
         def retry(): Trampoline[Unit] = {
           state.get() match {
@@ -69,12 +69,12 @@ object shared {
     private def state = this
 
     @tailrec
-    private def complete(data: Releasable[Continuation, A]): Trampoline[Unit] = {
+    private def complete(data: Releasable[UnitContinuation, A]): Trampoline[Unit] = {
       state.get() match {
         case oldState @ Opening(handlers) =>
           val newState = Open(data, handlers.length)
           if (state.compareAndSet(oldState, newState)) {
-            handlers.traverse_ { continue: (Releasable[Continuation, A] => Trampoline[Unit]) =>
+            handlers.traverse_ { continue: (Releasable[UnitContinuation, A] => Trampoline[Unit]) =>
               Trampoline.suspend(continue(sharedCloseable))
             }
           } else {
@@ -85,9 +85,9 @@ object shared {
       }
     }
 
-    private[shared] def acquire: Continuation[Releasable[Continuation, A]] = {
+    private[shared] def acquire: UnitContinuation[Releasable[UnitContinuation, A]] = {
       @tailrec
-      def retry(handler: Releasable[Continuation, A] => Trampoline[Unit]): Trampoline[Unit] = {
+      def retry(handler: Releasable[UnitContinuation, A] => Trampoline[Unit]): Trampoline[Unit] = {
         state.get() match {
           case oldState @ Closed() =>
             if (state.compareAndSet(oldState, Opening(Queue(handler)))) {
@@ -96,7 +96,7 @@ object shared {
             } else {
               retry(handler)
             }
-          case oldState @ Opening(handlers: Queue[Releasable[Continuation, A] => Trampoline[Unit]]) =>
+          case oldState @ Opening(handlers: Queue[Releasable[UnitContinuation, A] => Trampoline[Unit]]) =>
             if (state.compareAndSet(oldState, Opening(handlers.enqueue(handler)))) {
               Trampoline.done(())
             } else {
@@ -111,7 +111,7 @@ object shared {
         }
 
       }
-      Continuation.shift(retry)
+      Continuation.apply(retry)
     }
   }
 
