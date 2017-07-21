@@ -233,7 +233,7 @@ object asynchronous {
       * $seenow
       * $seescoped
       */
-    def delay[Value](task: Future[Value]): Do[Value] = {
+    def fromFuture[Value](task: Future[Value]): Do[Value] = {
       val Future(TryT(continuation)) = task
       Do(
         continuation.map { either =>
@@ -247,9 +247,8 @@ object asynchronous {
       * $seenow
       * $seescoped
       */
-    def delay[Value](future: Continuation[Value],
-                     dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
-      delay(Future(TryT(future.map(Success(_)))))
+    def fromContinuation[Value](future: Continuation[Value] ): Do[Value] = {
+      fromFuture(Future(TryT(future.map(Success(_)))))
     }
 
     /** $delay
@@ -258,7 +257,7 @@ object asynchronous {
       * $seescoped
       */
     def delay[Value](continuation: ContT[Trampoline, Unit, Value]): Do[Value] = {
-      delay(
+      fromFuture(
         Future(
           TryT(Continuation.shift { continue: (Try[Value] => Trampoline[Unit]) =>
             continuation { value: Value =>
@@ -275,7 +274,7 @@ object asynchronous {
       * $seescoped
       */
     def delay[Value](value: => Value): Do[Value] = {
-      delay(Future.delay(value))
+      fromFuture(Future.delay(value))
     }
 
     /** $now
@@ -283,7 +282,7 @@ object asynchronous {
       * $seescoped
       */
     def now[Value](value: Value): Do[Value] = {
-      delay(Future.now(value))
+      fromFuture(Future.now(value))
     }
 
     /** Returns a `Do` that runs in `executorContext`
@@ -314,7 +313,7 @@ object asynchronous {
       *       }}}
       */
     def jump()(implicit executorContext: ExecutionContext): Do[Unit] = {
-      delay(Continuation.shift { handler: (Unit => Trampoline[Unit]) =>
+      fromContinuation(Continuation.shift { handler: (Unit => Trampoline[Unit]) =>
         Trampoline.delay {
           executorContext.execute { () =>
             handler(()).run
