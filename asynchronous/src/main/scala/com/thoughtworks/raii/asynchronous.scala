@@ -173,7 +173,7 @@ object asynchronous {
       * $seedelay
       */
     def scoped[Value <: AutoCloseable](future: Future[Value]): Do[Value] = {
-      val TryT(continuation) = Future.toTryT[Value](future)
+      val Future(TryT(continuation)) = future
       Do.fromContinuation(
         continuation.map { either =>
           new Releasable[UnitContinuation, Try[Value]] {
@@ -199,7 +199,7 @@ object asynchronous {
       */
     def scoped[Value <: AutoCloseable](future: UnitContinuation[Value],
                                        dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
-      scoped(Future.fromTryT(TryT(future.map(Success(_)))))
+      scoped(Future(TryT(future.map(Success(_)))))
     }
 
     /** $scoped
@@ -209,14 +209,11 @@ object asynchronous {
       */
     def scoped[Value <: AutoCloseable](continuation: ContT[Trampoline, Unit, Value]): Do[Value] = {
       scoped(
-        Future.fromTryT(
-          TryT(
-            Continuation.apply { (continue: Try[Value] => Trampoline[Unit]) =>
-              continuation { value: Value =>
-                continue(Success(value))
-              }
-            }
-          ))
+        Future(TryT(Continuation(ContT { (continue: Try[Value] => Trampoline[Unit]) =>
+          continuation { value: Value =>
+            continue(Success(value))
+          }
+        })))
       )
     }
 
@@ -235,7 +232,7 @@ object asynchronous {
       * $seescoped
       */
     def garbageCollected[Value](future: Future[Value]): Do[Value] = {
-      val TryT(continuation) = Future.toTryT(future)
+      val Future(TryT(continuation)) = future
       Do.fromContinuation(
         continuation.map { either =>
           Releasable.now[UnitContinuation, Try[Value]](either)
@@ -250,7 +247,7 @@ object asynchronous {
       */
     def garbageCollected[Value](continuation: UnitContinuation[Value],
                                 dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
-      garbageCollected(Future.fromTryT(TryT(continuation.map(Success(_)))))
+      garbageCollected(Future(TryT(continuation.map(Success(_)))))
     }
 
     /** $delay
@@ -259,15 +256,11 @@ object asynchronous {
       * $seescoped
       */
     def garbageCollected[Value](contT: ContT[Trampoline, Unit, Value]): Do[Value] = {
-      garbageCollected(
-        Future.fromTryT(
-          TryT(Continuation.apply { continue: (Try[Value] => Trampoline[Unit]) =>
-            contT.run { value: Value =>
-              continue(Success(value))
-            }
-          })
-        )
-      )
+      garbageCollected(Future(TryT(Continuation(ContT { continue: (Try[Value] => Trampoline[Unit]) =>
+        contT.run { value: Value =>
+          continue(Success(value))
+        }
+      }))))
     }
 
     /** $delay
@@ -330,7 +323,7 @@ object asynchronous {
       *       though `Value` may depends on some [[scoped]] resources during opening `Value`.
       */
     def run[Value](doValue: Do[Value]): Future[Value] = {
-      Future.fromTryT(TryT(ResourceT.run(ResourceT(Do.toContinuation(doValue)))))
+      Future(TryT(ResourceT.run(ResourceT(Do.toContinuation(doValue)))))
     }
 
     /** Returns a `Do` of `B` based on a `Do` of `Value` and a function that creates a `Do` of `B`,

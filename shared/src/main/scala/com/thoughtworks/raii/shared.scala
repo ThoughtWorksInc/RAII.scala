@@ -8,7 +8,7 @@ import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
 import scala.annotation.tailrec
 import scala.collection.immutable.Queue
 import scalaz.Free.Trampoline
-import scalaz.Trampoline
+import scalaz.{ContT, Trampoline}
 import scalaz.syntax.all._
 import scalaz.std.iterable._
 
@@ -39,31 +39,30 @@ object shared {
     override def value: A = state.get().asInstanceOf[Open[A]].data.value
 
     override def release: UnitContinuation[Unit] = {
-      Continuation.apply { continue =>
-        @tailrec
-        def retry(): Trampoline[Unit] = {
-          state.get() match {
-            case oldState @ Open(data, count) =>
-              if (count == 1) {
-                if (state.compareAndSet(oldState, Closed())) {
-                  Continuation.run(data.release)(continue)
-                } else {
-                  retry()
-                }
+      @tailrec
+      def retry(continue: Unit => Trampoline[Unit]): Trampoline[Unit] = {
+        state.get() match {
+          case oldState @ Open(data, count) =>
+            if (count == 1) {
+              if (state.compareAndSet(oldState, Closed())) {
+                val Continuation(contT) = data.release
+                contT(continue)
               } else {
-                if (state.compareAndSet(oldState, oldState.copy(count = count - 1))) {
-                  Trampoline.suspend(continue(()))
-                } else {
-                  retry()
-                }
+                retry(continue)
               }
-            case Opening(_) | Closed() =>
-              throw new IllegalStateException("Cannot release more than once")
+            } else {
+              if (state.compareAndSet(oldState, oldState.copy(count = count - 1))) {
+                Trampoline.suspend(continue(()))
+              } else {
+                retry(continue)
+              }
+            }
+          case Opening(_) | Closed() =>
+            throw new IllegalStateException("Cannot release more than once")
 
-          }
         }
-        retry()
       }
+      Continuation(ContT(retry))
     }
 
     private def state = this
@@ -91,8 +90,8 @@ object shared {
         state.get() match {
           case oldState @ Closed() =>
             if (state.compareAndSet(oldState, Opening(Queue(handler)))) {
-              val ResourceT(continuation) = underlying
-              Continuation.run(continuation)(complete)
+              val ResourceT(Continuation(contT)) = underlying
+              contT(complete)
             } else {
               retry(handler)
             }
@@ -111,7 +110,7 @@ object shared {
         }
 
       }
-      Continuation.apply(retry)
+      Continuation(ContT(retry))
     }
   }
 

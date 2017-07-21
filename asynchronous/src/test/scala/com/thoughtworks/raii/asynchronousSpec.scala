@@ -42,18 +42,14 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ScalazTask
       "When map the new resource" - {
         "Then dependency resource should have been released" in {
           val p = Promise[Assertion]
-          Future
-            .run(Do.run(result.map { r =>
-              isSourceClosed should be(true)
-              isResultClosed should be(false)
-            })) { either =>
-              isSourceClosed should be(true)
-              isResultClosed should be(true)
-              Trampoline.delay {
-                val _ = p.complete(either)
-              }
-            }
-            .run
+          Future.onComplete(Do.run(result.map { r =>
+            isSourceClosed should be(true)
+            isResultClosed should be(false)
+          })) { either =>
+            isSourceClosed should be(true)
+            isResultClosed should be(true)
+            val _ = p.complete(either)
+          }
           p.future
         }
       }

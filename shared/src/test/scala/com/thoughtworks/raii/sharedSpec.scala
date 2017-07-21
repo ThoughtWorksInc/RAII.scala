@@ -117,21 +117,18 @@ object sharedSpec {
       }
   }
 
-  class FutureAsyncFakeResource(
-      allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource],
-      allCallBack: mutable.HashMap[String, Releasable[UnitContinuation, String] => Trampoline[Unit]],
-      idGenerator: () => String)
+  class FutureAsyncFakeResource(allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource],
+                                allCallBack: mutable.HashMap[String, Releasable[UnitContinuation, String] => Unit],
+                                idGenerator: () => String)
       extends FutureDelayFakeResource(allOpenedResources, idGenerator) {
 
     override def apply(): UnitContinuation[Releasable[UnitContinuation, String]] = {
-
-      Continuation.apply { f => //: (Releasable[UnitContinuation, String] => Unit)
+      Continuation.async { f =>
         if (allOpenedResources.contains(id)) {
           throw CanNotOpenResourceTwice()
         }
         allOpenedResources(id) = this
         allCallBack(id) = f
-        Trampoline.done(())
       }
     }
   }
@@ -456,7 +453,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val allCallBack = mutable.HashMap.empty[String, Releasable[UnitContinuation, String] => Trampoline[Unit]]
+    val allCallBack = mutable.HashMap.empty[String, Releasable[UnitContinuation, String] => Unit]
 
     val resource0: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "0").apply())
@@ -509,12 +506,11 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
         val _ = p.failure(e)
     }
 
-    allCallBack.foreach { callBackTuple =>
+    for ((id, continue) <- allCallBack) {
       val releasable = new Releasable[UnitContinuation, String] {
-        override def value: String = callBackTuple._1
-
+        override def value: String = id
         override def release: UnitContinuation[Unit] = Continuation.delay {
-          val removed = allOpenedResources.remove(callBackTuple._1)
+          val removed = allOpenedResources.remove(id)
 
           removed match {
             case Some(_) =>
@@ -523,8 +519,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
         }
       }
-
-      callBackTuple._2(releasable).run
+      continue(releasable)
     }
 
     p.future
@@ -534,7 +529,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val allAcquireCallBack = mutable.HashMap.empty[String, Releasable[UnitContinuation, String] => Trampoline[Unit]]
+    val allAcquireCallBack = mutable.HashMap.empty[String, Releasable[UnitContinuation, String] => Unit]
 
     val resource0: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "0").apply())
@@ -588,33 +583,32 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
         val _ = p.failure(e)
     }
 
-    val allReleaseCallBack = mutable.HashMap.empty[String, Unit => Trampoline[Unit]]
+    val allReleaseCallBack = mutable.HashMap.empty[String, Unit => Unit]
 
-    allAcquireCallBack.foreach { callBackTuple =>
+    for ((id, continue) <- allAcquireCallBack) {
       val releasable = new Releasable[UnitContinuation, String] {
-        override def value: String = callBackTuple._1
+        override def value: String = id
 
         override def release: UnitContinuation[Unit] = {
-          Continuation { f =>
-            allReleaseCallBack(callBackTuple._1) = f
-            Trampoline.done(())
+          Continuation.async { f =>
+            allReleaseCallBack(id) = f
           }
         }
       }
-      callBackTuple._2(releasable).run
+      continue(releasable)
     }
 
     while (allReleaseCallBack.keySet.nonEmpty) {
-      allReleaseCallBack.foreach { callBackTuple =>
-        callBackTuple._2 {
-          val removed = allOpenedResources.remove(callBackTuple._1)
-          allReleaseCallBack.remove(callBackTuple._1)
+      for ((id, continue) <- allReleaseCallBack) {
+        continue {
+          val removed = allOpenedResources.remove(id)
+          allReleaseCallBack.remove(id)
 
           removed match {
             case Some(_) =>
             case None    => throw new CanNotCloseResourceTwice
           }
-        }.run
+        }
       }
     }
 
