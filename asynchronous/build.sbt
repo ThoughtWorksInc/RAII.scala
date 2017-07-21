@@ -10,6 +10,8 @@ libraryDependencies += "com.chuusai" %% "shapeless" % "2.3.2"
 
 libraryDependencies += "com.thoughtworks.tryt" %% "covariant" % "2.0.3"
 
+libraryDependencies += "com.thoughtworks.future" %% "future" % "2.0.0-M1"
+
 enablePlugins(Example)
 
 exampleSuperTypes ~= { oldExampleSuperTypes =>
