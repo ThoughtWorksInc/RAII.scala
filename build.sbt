@@ -27,7 +27,7 @@ lazy val invariant = crossProject
             (_: Match) match {
               case Match("extends ResourceFactoryTInstances0") =>
                 "extends ResourceFactoryTInstances0 with ResourceFactoryTInvariantInstances"
-              case Match("covariant") => "invariant"
+              case Match("covariant")         => "invariant"
               case Groups(name @ ("A" | "_")) => name
             }
           )
@@ -44,15 +44,23 @@ lazy val invariantJVM = invariant.jvm.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val invariantJS = invariant.js.addSbtFiles(file("../build.sbt.shared"))
 
-lazy val shared = project.dependsOn(covariantJVM)
+lazy val shared = crossProject.crossType(CrossType.Pure).dependsOn(covariant)
 
-lazy val asynchronous = project.dependsOn(shared, covariantJVM)
+lazy val sharedJVM = shared.jvm.addSbtFiles(file("../build.sbt.shared"))
+
+lazy val sharedJS = shared.js.addSbtFiles(file("../build.sbt.shared"))
+
+lazy val asynchronous = crossProject.crossType(CrossType.Pure).dependsOn(shared, covariant)
+
+lazy val asynchronousJVM = asynchronous.jvm.addSbtFiles(file("../build.sbt.shared"))
+
+lazy val asynchronousJS = asynchronous.js.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
     UnidocKeys.unidocProjectFilter in ScalaUnidoc in UnidocKeys.unidoc := {
-      inDependencies(asynchronous, transitive = true, includeRoot = true) || inProjects(invariantJVM)
+      inDependencies(asynchronousJVM, transitive = true, includeRoot = true) || inProjects(invariantJVM)
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
     scalacOptions += "-Xexperimental",
