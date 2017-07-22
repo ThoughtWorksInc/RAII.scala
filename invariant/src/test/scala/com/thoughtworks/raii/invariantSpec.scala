@@ -103,7 +103,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
       r0
     }
 
-    ResourceT.run(ioResource).unsafePerformIO()
+    ioResource.run.unsafePerformIO()
 
     allOpenedResources.keys shouldNot contain("r0")
   }
@@ -137,7 +137,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
         throw Boom()
         r
       }
-      ResourceT.run(ioResource).unsafePerformIO()
+      ioResource.run.unsafePerformIO()
     } catch {
       case _: Boom =>
     }
@@ -174,7 +174,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
         events += "error is coming"
         r
       }
-      ResourceT.run(ioResource).unsafePerformIO()
+      ioResource.run.unsafePerformIO()
     }
 
     events should be(mutable.Buffer("acquire r", "error is coming", "release r"))
@@ -209,7 +209,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
         throw Boom()
         r
       }
-      ResourceT.run(ioResource).unsafePerformIO()
+      ioResource.run.unsafePerformIO()
     }
 
     events should be(mutable.Buffer("acquire 0", "error is coming", "release 0"))
@@ -244,7 +244,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
     val ioResource: ResourceT[IO, MyResource] = mr.map { r =>
       r
     }
-    ResourceT.run(ioResource).unsafePerformIO()
+    ioResource.run.unsafePerformIO()
 
     events should be(mutable.Buffer("acquire 0", "release 0"))
   }
@@ -266,7 +266,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
         r1
       }
     }
-    ResourceT.run(ioResource0).unsafePerformIO()
+    ioResource0.run.unsafePerformIO()
 
     allOpenedResources.keys shouldNot contain("mr0")
     allOpenedResources.keys shouldNot contain("mr1")
@@ -287,7 +287,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
         r1
       }
     }
-    ResourceT.run(ioResource0).unsafePerformIO()
+    ioResource0.run.unsafePerformIO()
 
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
@@ -309,7 +309,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
         r1
       }
     }
-    ResourceT.run(ioResource0).unsafePerformIO()
+    ioResource0.run.unsafePerformIO()
 
     allOpenedResources.keys shouldNot contain("0")
     allOpenedResources.keys shouldNot contain("1")
@@ -326,7 +326,7 @@ final class invariantSpec extends AsyncFreeSpec with Matchers with Inside {
           r1
         }
       }
-      ResourceT.run(ioResource0).unsafePerformIO()
+      ioResource0.run.unsafePerformIO()
     }
     allOpenedResources.keys should contain("r0")
   }

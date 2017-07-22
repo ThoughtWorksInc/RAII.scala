@@ -29,7 +29,7 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ThoughtWor
     })
     "And flatMap the resource to an new autoReleaseDependencies resource" - {
       var isResultClosed = false
-      val result = Do.intransitiveFlatMap(source) { sourceCloseable =>
+      val result = source.intransitiveFlatMap { sourceCloseable =>
         Do.scoped(new AutoCloseable {
           isResultClosed should be(false)
           override def close(): Unit = {
@@ -41,10 +41,10 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ThoughtWor
       "When map the new resource" - {
         "Then dependency resource should have been released" in {
           val p = Promise[Assertion]
-          ThoughtworksFutureOps(Do.run(result.map { r =>
+          ThoughtworksFutureOps(result.map { r =>
             isSourceClosed should be(true)
             isResultClosed should be(false)
-          }))
+          }.run)
             .onComplete { either =>
               isSourceClosed should be(true)
               isResultClosed should be(true)
@@ -67,7 +67,7 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ThoughtWor
       }
     }
 
-    Do.run(loop(0, 0)).map { i =>
+    loop(0, 0).run.map { i =>
       i should be((1 until 30000).sum)
     }
   }

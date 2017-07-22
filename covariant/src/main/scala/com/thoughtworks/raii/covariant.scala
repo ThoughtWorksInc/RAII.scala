@@ -164,6 +164,7 @@ private[raii] trait CovariantResourceTMonad[F[+ _]]
 private[raii] trait CovariantResourceTMonadError[F[+ _], S]
     extends MonadError[ResourceT[F, ?], S]
     with CovariantResourceTPoint[F] {
+  import covariant.catchError
   private[raii] implicit def typeClass: MonadError[F, S]
 
   override def raiseError[A](e: S): ResourceT[F, A] =
@@ -176,8 +177,6 @@ private[raii] trait CovariantResourceTMonadError[F[+ _], S]
       }
     )
   }
-
-  import com.thoughtworks.raii.covariant.ResourceT.catchError
 
   override def bind[A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
     opacityTypes.apply(
@@ -266,7 +265,7 @@ object covariant extends CovariantResourceTInstances0 {
     *
     *          {{{
     *          import scalaz.Name
-    *          import com.thoughtworks.raii.covariant.ResourceT, ResourceT._
+    *          import com.thoughtworks.raii.covariant._
     *          type RAII[A] = ResourceT[Name, A]
     *          }}}
     *
@@ -301,7 +300,7 @@ object covariant extends CovariantResourceTInstances0 {
     *          and those files should have been deleted after the `for` / `yield` block.
     *
     *          {{{
-    *          val (tmpFile1, tmpFile2) = ResourceT.run(usingResouce).value
+    *          val (tmpFile1, tmpFile2) = usingResouce.run.value
     *          tmpFile1 shouldNot exist
     *          tmpFile2 shouldNot exist
     *          }}}
@@ -365,16 +364,42 @@ object covariant extends CovariantResourceTInstances0 {
     def unapply[F[+ _], A](resourceT: ResourceT[F, A]): Some[F[Releasable[F, A]]] =
       Some(unwrap(resourceT))
 
-    private[raii] final def using[F[+ _], A, B](resourceT: ResourceT[F, A], f: A => F[B])(
-        implicit monad: Bind[F]): F[B] = {
-      unwrap(resourceT).flatMap { fa =>
-        f(fa.value).flatMap { a: B =>
-          fa.release.map { _ =>
-            a
-          }
+  }
+
+  /** @group Type classes */
+  implicit def covariantResourceTParallelApplicative[F[+ _]](
+      implicit F0: Applicative[Lambda[A => F[A] @@ Parallel]]
+  ): Applicative[Lambda[A => ResourceT[F, A] @@ Parallel]] = {
+    new CovariantResourceTParallelApplicative[F] {
+      override private[raii] implicit def typeClass = F0
+    }
+  }
+
+  private[raii] final def using[F[+ _], A, B](resourceT: ResourceT[F, A], f: A => F[B])(implicit monad: Bind[F]): F[B] = {
+    unwrap(resourceT).flatMap { fa =>
+      f(fa.value).flatMap { a: B =>
+        fa.release.map { _ =>
+          a
         }
       }
     }
+  }
+
+  private[raii] final def foreach[F[+ _], A](resourceT: ResourceT[F, A], f: A => Unit)(implicit monad: Bind[F],
+                                                                                       foldable: Foldable[F]): Unit = {
+    unwrap(resourceT)
+      .flatMap { fa =>
+        f(fa.value)
+        fa.release
+      }
+      .sequence_[Id.Id, Unit]
+  }
+
+  private[raii] def catchError[F[+ _]: MonadError[?[_], S], S, A](fa: F[A]): F[S \/ A] = {
+    fa.map(_.right[S]).handleError(_.left[A].point[F])
+  }
+
+  implicit final class CovariantResourceTOps[F[+ _], A](resourceT: ResourceT[F, A]) {
 
     /** Returns a `F` that performs the following process:
       *
@@ -382,7 +407,7 @@ object covariant extends CovariantResourceTInstances0 {
       *  - Closing the [[Releasable]]
       *  - Returning `A`
       */
-    final def run[F[+ _], A](resourceT: ResourceT[F, A])(implicit monad: Bind[F]): F[A] = {
+    def run(implicit monad: Bind[F]): F[A] = {
       unwrap(resourceT).flatMap { resource: Releasable[F, A] =>
         val value = resource.value
         resource.release.map { _ =>
@@ -399,9 +424,9 @@ object covariant extends CovariantResourceTInstances0 {
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def intransitiveMap[F[+ _]: Monad, A, B](fa: ResourceT[F, A])(f: A => B): ResourceT[F, B] = {
+    def intransitiveMap[B](f: A => B)(implicit monad: Monad[F]): ResourceT[F, B] = {
       opacityTypes.apply(
-        unwrap(fa).flatMap { releasableA =>
+        unwrap(resourceT).flatMap { releasableA =>
           val b = f(releasableA.value)
           releasableA.release.map { _ =>
             new Releasable[F, B] {
@@ -424,37 +449,14 @@ object covariant extends CovariantResourceTInstances0 {
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def intransitiveFlatMap[F[+ _]: Bind, A, B](fa: ResourceT[F, A])(f: A => ResourceT[F, B]): ResourceT[F, B] = {
+    def intransitiveFlatMap[B](f: A => ResourceT[F, B])(implicit bind: Bind[F]): ResourceT[F, B] = {
       opacityTypes.apply(
         for {
-          releasableA <- unwrap(fa)
+          releasableA <- unwrap(resourceT)
           releasableB <- unwrap(f(releasableA.value))
           _ <- releasableA.release
         } yield releasableB
       )
-    }
-    private[raii] final def foreach[F[+ _], A](resourceT: ResourceT[F, A],
-                                               f: A => Unit)(implicit monad: Bind[F], foldable: Foldable[F]): Unit = {
-      unwrap(resourceT)
-        .flatMap { fa =>
-          f(fa.value)
-          fa.release
-        }
-        .sequence_[Id.Id, Unit]
-    }
-
-    private[raii] def catchError[F[+ _]: MonadError[?[_], S], S, A](fa: F[A]): F[S \/ A] = {
-      fa.map(_.right[S]).handleError(_.left[A].point[F])
-    }
-
-  }
-
-  /** @group Type classes */
-  implicit def covariantResourceTParallelApplicative[F[+ _]](
-      implicit F0: Applicative[Lambda[A => F[A] @@ Parallel]]
-  ): Applicative[Lambda[A => ResourceT[F, A] @@ Parallel]] = {
-    new CovariantResourceTParallelApplicative[F] {
-      override private[raii] implicit def typeClass = F0
     }
   }
 }

@@ -242,7 +242,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       }
     }
 
-    val asynchronousResource: UnitContinuation[mutable.Buffer[String]] = ResourceT.run(usingResource)
+    val asynchronousResource: UnitContinuation[mutable.Buffer[String]] = usingResource.run
 
     allOpenedResources.keys shouldNot contain("0")
 
@@ -278,7 +278,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val resourceFactoryFutureString: ResourceT[UnitContinuation, Try[String]] =
       TryT.unwrap[ResourceT[UnitContinuation, `+?`], String](result)
 
-    val future: UnitContinuation[Try[String]] = ResourceT.run(resourceFactoryFutureString)
+    val future: UnitContinuation[Try[String]] = resourceFactoryFutureString.run
 
     val p = Promise[Assertion]
 
@@ -321,7 +321,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       }
 
     val Parallel(TryT(raiiFuture)) = parallelResult
-    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = raiiFuture.run
 
     val p = Promise[Assertion]
 
@@ -364,7 +364,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val result: RAIIFuture[String] = Parallel.unwrap(parallelResult)
     val raiiFuture: RAIIContinuation[Try[String]] = TryT.unapply(result).get
-    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = raiiFuture.run
 
     val p = Promise[Assertion]
 
@@ -418,7 +418,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val result: RAIIFuture[String] = Parallel.unwrap(parallelResult)
     val raiiFuture: RAIIContinuation[Try[String]] = TryT.unapply(result).get
-    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = raiiFuture.run
 
     val p = Promise[Assertion]
 
@@ -474,7 +474,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val result: RAIIFuture[String] = Parallel.unwrap(parallelResult)
     val raiiFuture: RAIIContinuation[Try[String]] = TryT.unapply(result).get
-    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = raiiFuture.run
 
     val p = Promise[Assertion]
 
@@ -550,7 +550,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val result: RAIIFuture[String] = Parallel.unwrap(parallelResult)
     val raiiFuture: RAIIContinuation[Try[String]] = TryT.unapply(result).get
-    val future: UnitContinuation[Try[String]] = ResourceT.run(raiiFuture)
+    val future: UnitContinuation[Try[String]] = raiiFuture.run
 
     val p = Promise[Assertion]
 
