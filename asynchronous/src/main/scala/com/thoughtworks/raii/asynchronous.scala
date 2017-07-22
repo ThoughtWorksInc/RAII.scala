@@ -1,6 +1,6 @@
 package com.thoughtworks.raii
 
-import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
+import com.thoughtworks.raii.covariant._
 import com.thoughtworks.tryt.covariant.TryT
 
 import scala.concurrent.ExecutionContext
@@ -12,9 +12,8 @@ import scalaz.Tags.Parallel
 import scalaz.std.`try`
 import ResourceT._
 import TryT._
-import com.thoughtworks.future.Future
-import Future._
-import com.thoughtworks.future.continuation.{Continuation, UnitContinuation}, Continuation._
+import com.thoughtworks.future._
+import com.thoughtworks.continuation._
 import com.thoughtworks.raii.shared._
 
 import scalaz.syntax.all._
@@ -56,12 +55,12 @@ object asynchronous {
         doa: TryT[RAIIContinuation, Value]): TryT[RAIIContinuation, Value] = doa
 
     override private[asynchronous] def doMonadErrorInstances: MonadError[TryT[RAIIContinuation, ?], Throwable] = {
-      TryT.tryTMonadError[RAIIContinuation](ResourceT.resourceTMonad[UnitContinuation](Continuation.continuationMonad))
+      TryT.tryTMonadError[RAIIContinuation](covariantResourceTMonad[UnitContinuation](continuationMonad))
     }
 
     override private[asynchronous] def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]) = {
       TryT.tryTParallelApplicative[RAIIContinuation](
-        ResourceT.resourceTParallelApplicative[UnitContinuation](Continuation.continuationParallelApplicative),
+        covariantResourceTParallelApplicative[UnitContinuation](continuationParallelApplicative),
         throwableSemigroup)
     }
   }
@@ -114,17 +113,16 @@ object asynchronous {
     */
   type ParallelDo[Value] = Do[Value] @@ Parallel
 
-  /** The companion object of [[ParallelDo]] */
-  object ParallelDo {
+  /** Returns an [[scalaz.Applicative Applicative]] type class for parallel computing.
+    *
+    * @note This type class requires a [[scalaz.Semigroup Semigroup]] to combine multiple `Throwable`s into one,
+    *       in the case of multiple tasks report errors in parallel.
+    */
+  implicit def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]): Applicative[ParallelDo] =
+    opacityTypes.doParallelApplicative
 
-    /** Returns an [[scalaz.Applicative Applicative]] type class for parallel computing.
-      *
-      * @note This type class requires a [[scalaz.Semigroup Semigroup]] to combine multiple `Throwable`s into one,
-      *       in the case of multiple tasks report errors in parallel.
-      */
-    implicit def doParallelApplicative(implicit throwableSemigroup: Semigroup[Throwable]): Applicative[ParallelDo] =
-      opacityTypes.doParallelApplicative
-  }
+  /** @group Type classes */
+  implicit def doMonadErrorInstances: MonadError[Do, Throwable] = opacityTypes.doMonadErrorInstances
 
   /** The companion object of [[Do]]
     * @define now Converts a strict value to a `Do` whose [[covariant.Releasable.release release]] operation is no-op.
@@ -145,9 +143,6 @@ object asynchronous {
     * @define garbageCollected `Value` must be a garbage-collected type that does not hold native resource.
     */
   object Do {
-
-    /** @group Type classes */
-    implicit def doMonadErrorInstances: MonadError[Do, Throwable] = opacityTypes.doMonadErrorInstances
 
     def apply[Value](tryT: TryT[ResourceT[UnitContinuation, `+?`], Value]): Do[Value] = {
       opacityTypes.fromTryT(tryT)
@@ -296,7 +291,7 @@ object asynchronous {
       *       import java.util.concurrent._
       *       import scala.concurrent._
       *       import scalaz.syntax.all._
-      *       import com.thoughtworks.raii.asynchronous.Do, Do._
+      *       import com.thoughtworks.raii.asynchronous._
       *
       *       implicit def executorContext = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor())
       *

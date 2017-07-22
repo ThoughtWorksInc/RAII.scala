@@ -10,7 +10,7 @@ libraryDependencies += "com.chuusai" %%% "shapeless" % "2.3.2"
 
 libraryDependencies += "com.thoughtworks.tryt" %%% "covariant" % "2.0.3"
 
-libraryDependencies += "com.thoughtworks.future" %%% "future" % "1.0.0-M3"
+libraryDependencies += "com.thoughtworks.future" %%% "future" % "1.0.0-M4"
 
 enablePlugins(Example)
 
@@ -19,4 +19,4 @@ exampleSuperTypes ~= { oldExampleSuperTypes =>
   updated(indexOf("_root_.org.scalatest.FreeSpec"), "_root_.org.scalatest.AsyncFreeSpec")
 }
 
-exampleSuperTypes += "_root_.com.thoughtworks.raii.scalatest.ScalazTaskToScalaFuture"
+exampleSuperTypes += "_root_.com.thoughtworks.raii.scalatest.ThoughtWorksFutureToScalaFuture"

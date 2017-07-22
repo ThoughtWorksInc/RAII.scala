@@ -2,7 +2,7 @@ package com.thoughtworks.raii
 
 import java.util.concurrent.atomic.AtomicReference
 
-import com.thoughtworks.future.continuation.{Continuation, UnitContinuation}
+import com.thoughtworks.continuation._
 import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
 
 import scala.annotation.tailrec

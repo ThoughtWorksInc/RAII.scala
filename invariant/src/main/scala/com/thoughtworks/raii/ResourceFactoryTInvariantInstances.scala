@@ -16,6 +16,6 @@ private[raii] trait ResourceFactoryTInvariantInstances { this: ResourceT.type =>
     override def liftM[F[_]: Monad, A](fa: F[A]): ResourceT[F, A] =
       opacityTypes.apply(fa.map(Releasable.now(_)))
 
-    override def apply[F[_]: Monad]: Monad[ResourceT[F, ?]] = resourceTMonad
+    override def apply[F[_]: Monad]: Monad[ResourceT[F, ?]] = invariantResourceTMonad
   }
 }

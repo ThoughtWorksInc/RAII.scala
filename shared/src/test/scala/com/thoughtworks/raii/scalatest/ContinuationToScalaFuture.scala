@@ -1,9 +1,13 @@
 package com.thoughtworks.raii.scalatest
 
-import com.thoughtworks.future.continuation.Continuation
+import scalaz.syntax.all._
+import com.thoughtworks.continuation._
+import com.thoughtworks.future._
+import com.thoughtworks.tryt.covariant.TryT
 
 import scala.concurrent.Promise
 import scala.language.implicitConversions
+import scala.util.Try
 import scalaz.Trampoline
 
 /**
@@ -11,9 +15,11 @@ import scalaz.Trampoline
   */
 trait ContinuationToScalaFuture {
 
-  implicit def continuationToScalaFuture[A](continuation: Continuation[Unit, A]): scala.concurrent.Future[A] = {
+  implicit def continuationToScalaFuture[A](continuation: UnitContinuation[A]): scala.concurrent.Future[A] = {
+    val continuationToScalaFuture = DummyImplicit.dummyImplicit
+    TryT(continuation.map(Try(_)))
     val promise = Promise[A]
-    Continuation.onComplete(continuation) { a =>
+    continuation.onComplete { a =>
       val _ = promise.success(a)
     }
     promise.future

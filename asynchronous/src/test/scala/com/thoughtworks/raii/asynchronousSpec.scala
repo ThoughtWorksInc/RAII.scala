@@ -2,22 +2,21 @@ package com.thoughtworks.raii
 
 import java.io.StringWriter
 
-import com.thoughtworks.future.Future
-import com.thoughtworks.raii.asynchronous.Do
+import com.thoughtworks.future._
+import com.thoughtworks.raii.asynchronous._
 
 import scalaz.syntax.all._
 import org.scalatest.{Assertion, AsyncFreeSpec, FreeSpec, Matchers}
 
 import scala.concurrent.Promise
-import com.thoughtworks.raii.asynchronous.Do._
-import com.thoughtworks.raii.scalatest.ScalazTaskToScalaFuture
+import com.thoughtworks.raii.scalatest.ThoughtWorksFutureToScalaFuture
 
 import scalaz.Trampoline
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-final class asynchronousSpec extends AsyncFreeSpec with Matchers with ScalazTaskToScalaFuture {
+final class asynchronousSpec extends AsyncFreeSpec with Matchers with ThoughtWorksFutureToScalaFuture {
 
   "Given a scoped resource" - {
     var isSourceClosed = false
@@ -42,14 +41,15 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ScalazTask
       "When map the new resource" - {
         "Then dependency resource should have been released" in {
           val p = Promise[Assertion]
-          Future.onComplete(Do.run(result.map { r =>
+          ThoughtworksFutureOps(Do.run(result.map { r =>
             isSourceClosed should be(true)
             isResultClosed should be(false)
-          })) { either =>
-            isSourceClosed should be(true)
-            isResultClosed should be(true)
-            val _ = p.complete(either)
-          }
+          }))
+            .onComplete { either =>
+              isSourceClosed should be(true)
+              isResultClosed should be(true)
+              val _ = p.complete(either)
+            }
           p.future
         }
       }

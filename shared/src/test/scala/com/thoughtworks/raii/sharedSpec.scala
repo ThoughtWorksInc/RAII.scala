@@ -1,13 +1,11 @@
 package com.thoughtworks.raii
 
-import com.thoughtworks.future.Future
-import Future._
-import com.thoughtworks.future.continuation.{Continuation, UnitContinuation}
-import com.thoughtworks.future.continuation.Continuation._
+import com.thoughtworks.future._
+import com.thoughtworks.continuation._
 import com.thoughtworks.raii.sharedSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.sharedSpec._
 import com.thoughtworks.raii.shared.SharedOps
-import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
+import com.thoughtworks.raii.covariant._
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
 import com.thoughtworks.raii.covariant.ResourceT._
 import com.thoughtworks.raii.scalatest.ContinuationToScalaFuture
@@ -87,8 +85,7 @@ object sharedSpec {
     }
   }
 
-  def raiiFutureMonad: Monad[RAIIContinuation] =
-    ResourceT.resourceTMonad[UnitContinuation](Continuation.continuationMonad)
+  def raiiFutureMonad: Monad[RAIIContinuation] = covariantResourceTMonad[UnitContinuation](continuationMonad)
 
   type RAIIContinuation[+A] = ResourceT[UnitContinuation, A]
 
@@ -187,7 +184,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       })
 
     val p = Promise[Assertion]
-    Continuation.onComplete(asynchronousResource) { _ =>
+    asynchronousResource.onComplete { _ =>
       val _ = p.success {
         allOpenedResources.keys shouldNot contain("r0")
         events should be(Seq("using r0"))
@@ -212,7 +209,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       })
 
       val p = Promise[Assertion]
-      Future.onComplete(asynchronousResource) {
+      asynchronousResource.onComplete {
         case scala.util.Failure(e) =>
           val _ = p.failure(e)
         case Success(_) =>
@@ -235,7 +232,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     allOpenedResources.keys shouldNot contain("0")
 
-    import com.thoughtworks.raii.covariant.ResourceT.resourceTMonad
+    import com.thoughtworks.raii.covariant.covariantResourceTMonad
 
     val usingResource: ResourceT[UnitContinuation, mutable.Buffer[String]] = sharedResource.flatMap { r1 =>
       sharedResource.map { r2 =>
@@ -263,18 +260,12 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val sharedResource: ResourceT[UnitContinuation, String] =
       ResourceT(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
-    import com.thoughtworks.raii.covariant.ResourceT.resourceTMonad
-
     val pf: RAIIFuture[String] = TryT[ResourceT[UnitContinuation, `+?`], String](
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
-    )
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(sharedResource) { Success(_) })
 
     val parallelPf = Parallel(pf)
 
     import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationMonad
-    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].map(parallelPf) { a =>
@@ -291,7 +282,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val p = Promise[Assertion]
 
-    Continuation.onComplete(future) { _ =>
+    ContinuationOps(future).onComplete { _ =>
       val _ = p.success {
         allOpenedResources.keys shouldNot contain("0")
         events should be(Seq("using a"))
@@ -308,10 +299,10 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(sharedResource) { Success(_) }
 
     val pf2: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(sharedResource) { Success(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(sharedResource) { Success(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -320,9 +311,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val parallelPf2 = Parallel(trypf2)
 
     import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationMonad
-    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.covariantResourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply2(parallelPf1, parallelPf2) {
@@ -336,7 +325,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val p = Promise[Assertion]
 
-    Continuation.onComplete(future) { either =>
+    ContinuationOps(future).onComplete { either =>
       inside(either) {
         case Success(value) =>
           val _ = p.success {
@@ -356,7 +345,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(sharedResource) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(sharedResource) { Try(_) }
 
     val trypf1 = TryT(pf1)
 
@@ -364,9 +353,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val parallelPf2 = Parallel(TryT.tryTMonadError[ResourceT[UnitContinuation, `+?`]].raiseError[String](Boom()))
 
     import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationMonad
-    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.covariantResourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply2(parallelPf1, parallelPf2) {
@@ -381,7 +368,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val p = Promise[Assertion]
 
-    Continuation.onComplete(future) { either =>
+    ContinuationOps(future).onComplete { either =>
       inside(either) {
         case scala.util.Failure(e) =>
           val _ = p.success {
@@ -403,13 +390,13 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "1").apply()).shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource0) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource0) { Try(_) }
 
     val pf2: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource1) { Try(_) }
 
     val pf3: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -420,9 +407,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val parallelPf3 = Parallel(trypf3)
 
     import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationMonad
-    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.covariantResourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
@@ -437,7 +422,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val p = Promise[Assertion]
 
-    Continuation.onComplete(future) { either =>
+    ContinuationOps(future).onComplete { either =>
       inside(either) {
         case Success(value) =>
           val _ = p.success {
@@ -461,13 +446,13 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "1").apply()).shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource0) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource0) { Try(_) }
 
     val pf2: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource1) { Try(_) }
 
     val pf3: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -478,9 +463,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val parallelPf3 = Parallel(trypf3)
 
     import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationMonad
-    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.covariantResourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
@@ -495,7 +478,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val p = Promise[Assertion]
 
-    Continuation.onComplete(future) {
+    ContinuationOps(future).onComplete {
       case Success(value) =>
         val _ = p.success {
           value should be("011")
@@ -539,13 +522,13 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
         .shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource0) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource0) { Try(_) }
 
     val pf2: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource1) { Try(_) }
 
     val pf3: ResourceT[UnitContinuation, Try[String]] =
-      resourceTMonad[UnitContinuation](Continuation.continuationMonad).map(resource1) { Try(_) }
+      covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource1) { Try(_) }
 
     val trypf1 = TryT(pf1)
     val trypf2 = TryT(pf2)
@@ -556,9 +539,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val parallelPf3 = Parallel(trypf3)
 
     import com.thoughtworks.tryt.covariant.TryT.tryTParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationParallelApplicative
-    import com.thoughtworks.future.continuation.Continuation.continuationMonad
-    import com.thoughtworks.raii.covariant.ResourceT.resourceTParallelApplicative
+    import com.thoughtworks.raii.covariant.covariantResourceTParallelApplicative
 
     val parallelResult: RAIIFuture[String] @@ Parallel =
       tryTParallelApplicative[ResourceT[UnitContinuation, `+?`]].apply3(parallelPf1, parallelPf2, parallelPf3) {
@@ -573,7 +554,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
     val p = Promise[Assertion]
 
-    Continuation.onComplete(future) {
+    ContinuationOps(future).onComplete {
       case Success(value) =>
         val _ = p.success {
           value should be("011")
