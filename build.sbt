@@ -8,7 +8,7 @@ lazy val covariantJVM = covariant.jvm.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val covariantJS = covariant.js.addSbtFiles(file("../build.sbt.shared"))
 
-val CovariantRegex = """extends ResourceFactoryTInstances0|covariant|\+\s*([A_])\b""".r
+val CovariantRegex = """extends ResourceFactoryTInstances0|[Cc]ovariant|\+\s*([A_])\b""".r
 
 lazy val invariant = crossProject
   .crossType(CrossType.Pure)
@@ -28,6 +28,7 @@ lazy val invariant = crossProject
               case Match("extends ResourceFactoryTInstances0") =>
                 "extends ResourceFactoryTInstances0 with ResourceFactoryTInvariantInstances"
               case Match("covariant")         => "invariant"
+              case Match("Covariant")         => "Invariant"
               case Groups(name @ ("A" | "_")) => name
             }
           )
