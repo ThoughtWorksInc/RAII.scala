@@ -23,7 +23,7 @@ object shared {
       extends State[A]
   private[shared] final case class Open[A](data: Releasable[UnitContinuation, A], count: Int) extends State[A]
 
-  implicit final class SharedOps[A](raii: ResourceT[UnitContinuation, A]) {
+  implicit final class UnitContinuationResourceSharedOps[A](raii: ResourceT[UnitContinuation, A]) {
 
     def shared: ResourceT[UnitContinuation, A] = {
       val sharedReference = new SharedStateMachine(raii)
