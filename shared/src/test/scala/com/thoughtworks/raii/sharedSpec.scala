@@ -4,7 +4,7 @@ import com.thoughtworks.future._
 import com.thoughtworks.continuation._
 import com.thoughtworks.raii.sharedSpec.Exceptions.{Boom, CanNotCloseResourceTwice, CanNotOpenResourceTwice}
 import com.thoughtworks.raii.sharedSpec._
-import com.thoughtworks.raii.shared.SharedOps
+import com.thoughtworks.raii.shared._
 import com.thoughtworks.raii.covariant._
 import org.scalatest.{Assertion, AsyncFreeSpec, Inside, Matchers}
 import com.thoughtworks.raii.covariant.ResourceT._
