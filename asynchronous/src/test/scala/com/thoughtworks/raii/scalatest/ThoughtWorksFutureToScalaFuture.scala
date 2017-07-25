@@ -9,7 +9,7 @@ import scala.language.implicitConversions
 trait ThoughtWorksFutureToScalaFuture {
 
   implicit def scalazTaskToScalaFuture[A](future: Future[A]): scala.concurrent.Future[A] = {
-    future.asScala
+    future.toScalaFuture
   }
 
 }
