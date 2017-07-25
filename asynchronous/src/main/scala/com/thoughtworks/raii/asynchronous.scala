@@ -128,6 +128,7 @@ object asynchronous {
     *
     * @note This type class requires a [[scalaz.Semigroup Semigroup]] to combine multiple `Throwable`s into one,
     *       in the case of multiple tasks report errors in parallel.
+    * @group Type classes
     */
   implicit def asynchronousDoParallelApplicative(
       implicit throwableSemigroup: Semigroup[Throwable]): Applicative[ParallelDo] =
