@@ -81,7 +81,7 @@ object asynchronous {
     * == Features of `Do` ==
     *  - [[com.thoughtworks.tryt.covariant.TryT exception handling]]
     *  - [[com.thoughtworks.raii.covariant.ResourceT automatic resource management]]
-    *  - [[Do$.shared reference counting]]
+    *  - [[Do$.AsynchronousDoOps.shared reference counting]]
     *  - [[com.thoughtworks.future.continuation.UnitContinuation asynchronous programming]]
     *  - [[ParallelDo parallel computing]]
     *
