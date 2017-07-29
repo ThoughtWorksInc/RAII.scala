@@ -50,6 +50,18 @@ libraryDependencies += "com.thoughtworks.raii" %% "invariant" % "latest.release"
 
 and check the [Scaladoc](https://javadoc.io/page/com.thoughtworks.raii/invariant_2.11/latest/com/thoughtworks/raii/invariant$$ResourceT.html) for usage.
 
+## Links
+
+* [API Documentation](https://javadoc.io/page/com.thoughtworks.raii/asynchronous_2.11/latest/com/thoughtworks/raii/package.html)
+
+### Related projects
+
+* [Scalaz](http://scalaz.org/) provides type classes and underlying data structures for this project.
+* [ThoughtWorks Each](https://github.com/ThoughtWorksInc/each) provides `monadic`/`each`-like syntax which can be used with this project.
+* [tryt.scala](https://github.com/ThoughtWorksInc/TryT.scala) provides exception handling monad transformers for this project.
+* [future.scala](https://github.com/ThoughtWorksInc/future.scala) provides the asynchronous task types for this project.
+* [DeepLearning.scala](http://deeplearning.thoughtworks.school/) uses this project for asynchronous executed neural networks.
+
 ## Credits
 
 This library is inspired by [Josh Suereth](https://github.com/jsuereth)'s [scala-arm](https://github.com/jsuereth/scala-arm),
