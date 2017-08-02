@@ -48,7 +48,7 @@ trait AsynchronousSemaphore {
         }
       }
     }
-    Do(TryT(ResourceT(releasableContinuation)))
+    Do(TryT[ResourceT[UnitContinuation, `+?`], Unit](ResourceT[UnitContinuation, Try[Unit]](releasableContinuation)))
   }
 
   @tailrec
