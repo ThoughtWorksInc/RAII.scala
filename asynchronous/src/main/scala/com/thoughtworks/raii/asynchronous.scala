@@ -287,6 +287,19 @@ object asynchronous {
       garbageCollected(Future.now(value))
     }
 
+    def async[Value](start: (Releasable[UnitContinuation, Try[Value]] => Unit) => Unit): Do[Value] = {
+      Do(TryT(ResourceT(UnitContinuation.async(start))))
+    }
+
+    def safeAsync[Value](
+        start: (Releasable[UnitContinuation, Try[Value]] => Trampoline[Unit]) => Trampoline[Unit]): Do[Value] = {
+      Do(TryT(ResourceT(UnitContinuation.safeAsync(start))))
+    }
+
+    def suspend[Value](doValue: => Do[Value]): Do[Value] = {
+      Do.safeAsync(doValue.safeOnComplete(_))
+    }
+
     /** Returns a `Do` that runs in `executorContext`.
       *
       * @note This method is usually been used for changing the current thread.
@@ -325,6 +338,16 @@ object asynchronous {
   }
 
   implicit final class AsynchronousDoOps[Value](asynchronousDo: Do[Value]) {
+
+    def onComplete(continue: Releasable[UnitContinuation, Try[Value]] => Unit) = {
+      val Do(TryT(ResourceT(continuation))) = asynchronousDo
+      continuation.onComplete(continue)
+    }
+
+    def safeOnComplete(continue: Releasable[UnitContinuation, Try[Value]] => Trampoline[Unit]) = {
+      val Do(TryT(ResourceT(continuation))) = asynchronousDo
+      continuation.safeOnComplete(continue)
+    }
 
     /**
       * Returns a `Future` of `Value`, which will open `Value` and release all resources during opening `Value`.
