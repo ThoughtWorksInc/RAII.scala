@@ -360,12 +360,12 @@ object asynchronous {
     }
 
     /** Returns a `Do` of `B` based on a `Do` of `Value` and a function that creates a `Do` of `B`,
-      * for those `B` do not reference to `A` or `A` is a garbage collected object.
+      * for those `B` do not reference to `Value` or `Value` is a garbage collected object.
       *
       * @note `intransitiveFlatMap` is similar to `flatMap` in [[asynchronousDoMonadErrorInstances]],
       *       except `intransitiveFlatMap` will release `Value` right after `B` is created.
       *
-      *       Don't use this method if you need to retain `A` until `B` is released.
+      *       Don't use this method if you need to retain `Value` until `B` is released.
       */
     def intransitiveFlatMap[B](f: Value => Do[B]): Do[B] = {
       val resourceA = ResourceT(toContinuation(asynchronousDo))
@@ -380,12 +380,12 @@ object asynchronous {
     }
 
     /** Returns a `Do` of `B` based on a `Do` of `Value` and a function that creates `B`,
-      * for those `B` do not reference to `A` or `A` is a garbage collected object.
+      * for those `B` do not reference to `Value` or `Value` is a garbage collected object.
       *
       * @note `intransitiveMap` is similar to `map` in [[asynchronousDoMonadErrorInstances]],
       *       except `intransitiveMap` will release `Value` right after `B` is created.
       *
-      *       Don't use this method if you need to retain `A` until `B` is released.
+      *       Don't use this method if you need to retain `Value` until `B` is released.
       */
     def intransitiveMap[B](f: Value => B): Do[B] = {
       val resourceA = ResourceT(toContinuation(asynchronousDo))
