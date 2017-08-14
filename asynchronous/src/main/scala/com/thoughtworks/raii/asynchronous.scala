@@ -81,8 +81,8 @@ object asynchronous {
     * == Features of `Do` ==
     *  - [[com.thoughtworks.tryt.covariant.TryT exception handling]]
     *  - [[com.thoughtworks.raii.covariant.ResourceT automatic resource management]]
-    *  - [[Do$.AsynchronousDoOps.shared reference counting]]
-    *  - [[com.thoughtworks.future.continuation.UnitContinuation asynchronous programming]]
+    *  - [[asynchronous.AsynchronousDoOps.shared reference counting]]
+    *  - [[com.thoughtworks.continuation.UnitContinuation asynchronous programming]]
     *  - [[ParallelDo parallel computing]]
     *
     * @note This `Do` type is an [[https://www.reddit.com/r/scala/comments/5qbdgq/value_types_without_anyval/dcxze9q/ opacity alias]] to `UnitContinuation[Releasable[UnitContinuation, Try[Value]]]`.
