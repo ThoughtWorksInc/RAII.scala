@@ -101,7 +101,7 @@ object asynchronous {
     *          import com.thoughtworks.raii.asynchronous.{Do, ParallelDo}
     *          import java.net._
     *          import java.io._
-    *          val originalDoInput: Do[InputStream] = Do.scoped(new URL("http://thoughtworks.com/").openStream())
+    *          val originalDoInput: Do[InputStream] = Do.autoCloseable(new URL("http://thoughtworks.com/").openStream())
     *          }}}
     *
     *          when converting it to `ParallelDo` and converting it back,
@@ -147,9 +147,13 @@ object asynchronous {
     *
     * @define seedelay @see [[delay]] for non-strict garbage collected `Do`
     *
-    * @define scoped Returns a non-strict `Do` whose [[covariant.Releasable.release release]] operation is [[java.lang.AutoCloseable.close]].
+    * @define autocloseable Returns a non-strict `Do` whose [[covariant.Releasable.release release]] operation is [[java.lang.AutoCloseable.close]].
     *
-    * @define seescoped @see [[scoped]] for auto-closeable `Do`
+    * @define releasable Returns a non-strict `Do` whose [[covariant.Releasable.release release]] operation is asynchronous.
+    *
+    * @define seeautocloseable @see [[autoCloseable]] for auto-closeable `Do`
+    *
+    * @define seereleasable @see [[asynchronousReleasable]] for creating a `Do` whose [[covariant.Releasable.release release]] operation is asynchronous.
     *
     * @define nonstrict Since the `Do` is non-strict,
     *                   `Value` will be recreated each time it is sequenced into a larger `Do`.
@@ -166,70 +170,133 @@ object asynchronous {
       Some(opacityTypes.toTryT(doValue))
     }
 
-    /** $scoped
+    /** $releasable
       * $nonstrict
       * $seenow
       * $seedelay
+      * $seeautocloseable
       */
-    def scoped[Value <: AutoCloseable](future: Future[Value]): Do[Value] = {
+    def asynchronousReleasable[Value](future: Future[Releasable[UnitContinuation, Value]]): Do[Value] = {
       val Future(TryT(continuation)) = future
       fromContinuation(
-        continuation.map { either =>
-          new Releasable[UnitContinuation, Try[Value]] {
-            override def value: Try[Value] = either
-
-            override def release(): UnitContinuation[Unit] = {
-              either match {
-                case Success(closeable) =>
-                  Continuation.delay(closeable.close())
-                case Failure(_) =>
-                  Continuation.now(())
+        continuation.map {
+          case failure @ Failure(e) =>
+            new Releasable[UnitContinuation, Try[Value]] {
+              override val value: Try[Value] = Failure(e)
+              override def release: UnitContinuation[Unit] = {
+                UnitContinuation.now(())
               }
             }
-          }
+          case success @ Success(releasable) =>
+            new Releasable[UnitContinuation, Try[Value]] {
+              override val value = Success(releasable.value)
+              override def release: UnitContinuation[Unit] = releasable.release
+            }
         }
       )
     }
 
-    /** $scoped
-      * $nonstrict
-      * $seenow
-      * $seedelay
-      */
-    def scoped[Value <: AutoCloseable](future: UnitContinuation[Value],
-                                       dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
-      scoped(Future(TryT(future.map(Success(_)))))
+    @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
+    def scoped[Value <: AutoCloseable](future: Future[Value]): Do[Value] = {
+      autoCloseable(future)
     }
 
-    /** $scoped
+    /** $autocloseable
       * $nonstrict
       * $seenow
       * $seedelay
+      * $seereleasable
       */
-    def scoped[Value <: AutoCloseable](continuation: ContT[Trampoline, Unit, Value]): Do[Value] = {
-      scoped(
-        Future(TryT(Continuation(ContT { (continue: Try[Value] => Trampoline[Unit]) =>
-          continuation { value: Value =>
-            continue(Success(value))
-          }
-        })))
+    def autoCloseable[Value <: AutoCloseable](future: Future[Value]): Do[Value] = {
+      val Future(TryT(continuation)) = future
+      fromContinuation(
+        continuation.map {
+          case failure @ Failure(e) =>
+            new Releasable[UnitContinuation, Try[Value]] {
+              override val value: Try[Value] = failure
+              override val release: UnitContinuation[Unit] = {
+                UnitContinuation.now(())
+              }
+            }
+          case success @ Success(closeable) =>
+            new Releasable[UnitContinuation, Try[Value]] {
+              override val value: Try[Value] = success
+              override val release: UnitContinuation[Unit] = {
+                Continuation.delay(closeable.close())
+              }
+            }
+        }
       )
     }
 
-    /** $scoped
+    @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
+    def scoped[Value <: AutoCloseable](future: UnitContinuation[Value],
+                                       dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
+      autoCloseable(future)
+    }
+
+    /** $releasable
+      * $nonstrict
+      * $seenow
+      * $seedelay
+      * $seeautocloseable
+      */
+    def asynchronousReleasable[Value](future: UnitContinuation[Releasable[UnitContinuation, Value]],
+                                      dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
+      asynchronousReleasable(Future(TryT(future.map(Success(_)))))
+    }
+
+    /** $autocloseable
+      * $nonstrict
+      * $seenow
+      * $seedelay
+      * $seereleasable
+      */
+    def autoCloseable[Value <: AutoCloseable](future: UnitContinuation[Value],
+                                              dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
+      autoCloseable(Future(TryT(future.map(Success(_)))))
+    }
+
+    @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
+    def scoped[Value <: AutoCloseable](contT: ContT[Trampoline, Unit, Value]): Do[Value] = {
+      autoCloseable(
+        Future(TryT(Continuation { (continue: Try[Value] => Trampoline[Unit]) =>
+          contT { value: Value =>
+            continue(Success(value))
+          }
+        }))
+      )
+    }
+
+    @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
+    def scoped[Value <: AutoCloseable](value: => Value): Do[Value] = {
+      autoCloseable(value)
+    }
+
+    /** $releasable
+      * $nonstrict
+      * $seenow
+      * $seedelay
+      * $seeautocloseable
+      */
+    def asynchronousReleasable[Value](value: => Releasable[UnitContinuation, Value]): Do[Value] = {
+      asynchronousReleasable(Future.delay(value))
+    }
+
+    /** $autocloseable
       * $nonstrict
       * $seenow
       * $seedelay
       */
-    def scoped[Value <: AutoCloseable](value: => Value): Do[Value] = {
-      scoped(Future.delay(value))
+    def autoCloseable[Value <: AutoCloseable](value: => Value): Do[Value] = {
+      autoCloseable(Future.delay(value))
     }
 
     /** $delay
       * $nonstrict
       * $garbageCollected
       * $seenow
-      * $seescoped
+      * $seeautocloseable
       * $seedelay
       */
     def garbageCollected[Value](future: Future[Value]): Do[Value] = {
@@ -245,7 +312,7 @@ object asynchronous {
       * $nonstrict
       * $garbageCollected
       * $seenow
-      * $seescoped
+      * $seeautocloseable
       * $seedelay
       */
     def garbageCollected[Value](continuation: UnitContinuation[Value],
@@ -257,22 +324,22 @@ object asynchronous {
       * $nonstrict
       * $garbageCollected
       * $seenow
-      * $seescoped
+      * $seeautocloseable
       * $seedelay
       */
     def garbageCollected[Value](contT: ContT[Trampoline, Unit, Value]): Do[Value] = {
-      garbageCollected(Future(TryT(Continuation(ContT { continue: (Try[Value] => Trampoline[Unit]) =>
+      garbageCollected(Future(TryT(Continuation { continue: (Try[Value] => Trampoline[Unit]) =>
         contT.run { value: Value =>
           continue(Success(value))
         }
-      }))))
+      })))
     }
 
     /** $delay
       * $nonstrict
       * $garbageCollected
       * $seenow
-      * $seescoped
+      * $seeautocloseable
       */
     def delay[Value](value: => Value): Do[Value] = {
       garbageCollected(Future.delay(value))
@@ -281,7 +348,7 @@ object asynchronous {
     /** $now
       * $garbageCollected
       * $seedelay
-      * $seescoped
+      * $seeautocloseable
       */
     def now[Value](value: Value): Do[Value] = {
       garbageCollected(Future.now(value))
@@ -329,7 +396,7 @@ object asynchronous {
       * $delay
       * $nonstrict
       * $seenow
-      * $seescoped
+      * $seeautocloseable
       */
     def execute[Value](value: => Value)(implicit executorContext: ExecutionContext): Do[Value] = {
       garbageCollected(Future.execute(value))

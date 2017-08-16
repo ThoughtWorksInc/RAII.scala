@@ -62,7 +62,7 @@ object shared {
 
         }
       }
-      Continuation(ContT(retry))
+      Continuation(retry)
     }
 
     private def state = this
@@ -110,7 +110,7 @@ object shared {
         }
 
       }
-      Continuation(ContT(retry))
+      Continuation(retry)
     }
   }
 
