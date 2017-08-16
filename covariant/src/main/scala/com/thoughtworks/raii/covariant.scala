@@ -419,7 +419,7 @@ object covariant extends CovariantResourceTInstances0 {
     /** Returns a resource of `B` based on a resource of `A` and a function that creates `B`,
       * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
-      * @note `intransitiveMap` is to `map` in [[resourceTMonad]],
+      * @note `intransitiveMap` is to `map` in [[covariantResourceTMonad]],
       *       except `intransitiveMap` will release `A` right after `B` is created.
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
@@ -444,7 +444,7 @@ object covariant extends CovariantResourceTInstances0 {
     /** Returns a resource of `B` based on a resource of `A` and a function that creates resource of `B`,
       * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
-      * @note `intransitiveFlatMap` is similar to `flatMap` in [[resourceTMonad]],
+      * @note `intransitiveFlatMap` is similar to `flatMap` in [[covariantResourceTMonad]],
       *       except `intransitiveFlatMap` will release `A` right after `B` is created.
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
