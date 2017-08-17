@@ -328,6 +328,9 @@ object covariant extends CovariantResourceTInstances0 {
     def release: F[Unit]
   }
 
+  @deprecated(message = "Use [[Resource]] instead.", since = "3.0.0")
+  type Releasable[F[+ _], +A] = Resource[F, A]
+
   object Resource {
 
     def unapply[F[+ _], A](resource: Resource[F, A]): Option[(A, F[Unit])] = Some((resource.value, resource.release))
