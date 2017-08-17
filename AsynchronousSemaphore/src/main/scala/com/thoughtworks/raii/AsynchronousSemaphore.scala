@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicReference
 import com.thoughtworks.continuation._
 import com.thoughtworks.future._
 import com.thoughtworks.raii.asynchronous.Do
-import com.thoughtworks.raii.covariant.{Releasable, ResourceT}
+import com.thoughtworks.raii.covariant.{Resource, ResourceT}
 import com.thoughtworks.tryt.covariant.TryT
 
 import scala.annotation.tailrec
@@ -39,8 +39,8 @@ trait AsynchronousSemaphore {
   protected def state: AtomicReference[State]
 
   def toDo: Do[Unit] = {
-    val releasableContinuation: UnitContinuation[Releasable[UnitContinuation, Try[Unit]]] = acquire().map { _ =>
-      new Releasable[UnitContinuation, Try[Unit]] {
+    val releasableContinuation: UnitContinuation[Resource[UnitContinuation, Try[Unit]]] = acquire().map { _ =>
+      new Resource[UnitContinuation, Try[Unit]] {
         override def value: Try[Unit] = Success(())
 
         override def release: UnitContinuation[Unit] = UnitContinuation.safeAsync[Unit] { continue =>

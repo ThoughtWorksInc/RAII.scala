@@ -20,11 +20,11 @@ private[raii] object invariantSpec {
   def scoped[Resource <: AutoCloseable](autoCloseable: => Resource): ResourceT[IO, Resource] =
     managedT[IO, Resource](autoCloseable)
 
-  def managedT[F[_]: Applicative, Resource <: AutoCloseable](autoCloseable: => Resource): ResourceT[F, Resource] = {
+  def managedT[F[_]: Applicative, Value <: AutoCloseable](autoCloseable: => Value): ResourceT[F, Value] = {
     ResourceT(
       Applicative[F].point {
-        new Releasable[F, Resource] {
-          override val value: Resource = autoCloseable
+        new Resource[F, Value] {
+          override val value: Value = autoCloseable
 
           override def release(): F[Unit] = Applicative[F].point(value.close())
         }

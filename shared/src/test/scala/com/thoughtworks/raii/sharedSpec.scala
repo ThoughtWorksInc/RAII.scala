@@ -27,11 +27,11 @@ import scalaz.Free.Trampoline
   */
 object sharedSpec {
 
-  def managedT[F[+ _]: Applicative, Resource <: AutoCloseable](autoCloseable: => Resource): ResourceT[F, Resource] = {
+  def managedT[F[+ _]: Applicative, Value <: AutoCloseable](autoCloseable: => Value): ResourceT[F, Value] = {
     ResourceT(
       Applicative[F].point {
-        new Releasable[F, Resource] {
-          override val value: Resource = autoCloseable
+        new Resource[F, Value] {
+          override val value: Value = autoCloseable
 
           override def release(): F[Unit] = Applicative[F].point(value.close())
         }
@@ -115,11 +115,11 @@ object sharedSpec {
   }
 
   class FutureAsyncFakeResource(allOpenedResources: mutable.HashMap[String, FutureDelayFakeResource],
-                                allCallBack: mutable.HashMap[String, Releasable[UnitContinuation, String] => Unit],
+                                allCallBack: mutable.HashMap[String, Resource[UnitContinuation, String] => Unit],
                                 idGenerator: () => String)
       extends FutureDelayFakeResource(allOpenedResources, idGenerator) {
 
-    override def apply(): UnitContinuation[Releasable[UnitContinuation, String]] = {
+    override def apply(): UnitContinuation[Resource[UnitContinuation, String]] = {
       Continuation.async { f =>
         if (allOpenedResources.contains(id)) {
           throw CanNotOpenResourceTwice()
@@ -145,10 +145,10 @@ object sharedSpec {
       allOpenedResources(id) = this
     }
 
-    def apply(): UnitContinuation[Releasable[UnitContinuation, String]] = {
+    def apply(): UnitContinuation[Resource[UnitContinuation, String]] = {
       appendThisToAllOpenedResources()
       Continuation.delay(
-        new Releasable[UnitContinuation, String] {
+        new Resource[UnitContinuation, String] {
           override def value: String = id
 
           override def release: UnitContinuation[Unit] = Continuation.delay {
@@ -438,7 +438,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val allCallBack = mutable.HashMap.empty[String, Releasable[UnitContinuation, String] => Unit]
+    val allCallBack = mutable.HashMap.empty[String, Resource[UnitContinuation, String] => Unit]
 
     val resource0: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "0").apply())
@@ -490,7 +490,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     }
 
     for ((id, continue) <- allCallBack) {
-      val releasable = new Releasable[UnitContinuation, String] {
+      val releasable = new Resource[UnitContinuation, String] {
         override def value: String = id
         override def release: UnitContinuation[Unit] = Continuation.delay {
           val removed = allOpenedResources.remove(id)
@@ -512,7 +512,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
-    val allAcquireCallBack = mutable.HashMap.empty[String, Releasable[UnitContinuation, String] => Unit]
+    val allAcquireCallBack = mutable.HashMap.empty[String, Resource[UnitContinuation, String] => Unit]
 
     val resource0: ResourceT[UnitContinuation, String] =
       ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "0").apply())
@@ -567,7 +567,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allReleaseCallBack = mutable.HashMap.empty[String, Unit => Unit]
 
     for ((id, continue) <- allAcquireCallBack) {
-      val releasable = new Releasable[UnitContinuation, String] {
+      val releasable = new Resource[UnitContinuation, String] {
         override def value: String = id
 
         override def release: UnitContinuation[Unit] = {
