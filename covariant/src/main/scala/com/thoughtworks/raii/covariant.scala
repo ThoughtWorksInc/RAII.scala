@@ -60,15 +60,12 @@ private[raii] trait CovariantResourceTApplicative[F[+ _]]
     opacityTypes.apply(
       Applicative[F].apply2(unwrap(fa), unwrap(f)) { (releasableA, releasableF) =>
         val releaseA = releasableA.release
-        new Resource[F, B] {
-          override val value: B = releasableF.value(releasableA.value)
-
-          override val release: F[Unit] = {
-            Applicative[F].apply2(releaseA, releasableF.release) { (_: Unit, _: Unit) =>
-              ()
-            }
+        Resource[F, B](
+          value = releasableF.value(releasableA.value),
+          release = Applicative[F].apply2(releaseA, releasableF.release) { (_: Unit, _: Unit) =>
+            ()
           }
-        }
+        )
       }
     )
   }
@@ -314,6 +311,7 @@ object covariant extends CovariantResourceTInstances0 {
   import opacityTypes._
 
   /** A container of a [[value]] and a function to [[release]] the `value`.
+    * @note This [[Resource]] will become a case class. Use [[Resource.apply]] instead of `new Resource[F, A] { ... }`.
     * @tparam A the type of [[value]]
     * @tparam F the monadic type of [[release]]
     */
@@ -330,13 +328,25 @@ object covariant extends CovariantResourceTInstances0 {
     def release: F[Unit]
   }
 
-  private[raii] object Resource {
-    @inline
-    def now[F[+ _]: Applicative, A](value0: A): Resource[F, A] = {
+  object Resource {
+
+    def unapply[F[+ _], A](resource: Resource[F, A]): Option[(A, F[Unit])] = Some((resource.value, resource.release))
+
+    def apply[F[+ _], A](value: A, release: F[Unit]): Resource[F, A] = {
+      val value0 = value
+      val release0 = release
       new Resource[F, A] {
-        override val value: A = value0
-        override val release: F[Unit] = Applicative[F].point(())
+        def value: A = value0
+
+        def release: F[Unit] = release0
+
+        override def toString: String = raw"""Resource($value, $release)"""
       }
+    }
+
+    @inline
+    private[raii] def now[F[+ _]: Applicative, A](value: A): Resource[F, A] = {
+      Resource[F, A](value, Applicative[F].point(()))
     }
   }
 
