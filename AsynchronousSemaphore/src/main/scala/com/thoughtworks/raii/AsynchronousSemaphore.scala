@@ -40,13 +40,12 @@ trait AsynchronousSemaphore {
 
   def toDo: Do[Unit] = {
     val releasableContinuation: UnitContinuation[Resource[UnitContinuation, Try[Unit]]] = acquire().map { _ =>
-      new Resource[UnitContinuation, Try[Unit]] {
-        override def value: Try[Unit] = Success(())
-
-        override def release: UnitContinuation[Unit] = UnitContinuation.safeAsync[Unit] { continue =>
+      Resource[UnitContinuation, Try[Unit]](
+        value = Success(()),
+        release = UnitContinuation.safeAsync[Unit] { continue =>
           AsynchronousSemaphore.this.release().flatMap(continue)
         }
-      }
+      )
     }
     Do(TryT[ResourceT[UnitContinuation, `+?`], Unit](ResourceT[UnitContinuation, Try[Unit]](releasableContinuation)))
   }
