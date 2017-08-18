@@ -25,10 +25,6 @@ import scalaz.syntax.all._
   */
 object asynchronous {
 
-  trait Releasable {
-    def release: UnitContinuation[Unit]
-  }
-
   private def fromContinuation[Value](future: UnitContinuation[Resource[UnitContinuation, Try[Value]]]): Do[Value] = {
     opacityTypes.fromTryT(TryT[RAIIContinuation, Value](ResourceT(future)))
   }
@@ -180,7 +176,7 @@ object asynchronous {
       * $seedelay
       * $seeautocloseable
       */
-    def releasable[Value <: Releasable](future: Future[Value]): Do[Value] = {
+    def monadicCloseable[Value <: MonadicCloseable[UnitContinuation]](future: Future[Value]): Do[Value] = {
       val Future(TryT(continuation)) = future
       fromContinuation(
         continuation.map {
@@ -194,7 +190,7 @@ object asynchronous {
           case success @ Success(releasable) =>
             new Resource[UnitContinuation, Try[Value]] {
               override val value = Success(releasable)
-              override def release: UnitContinuation[Unit] = releasable.release
+              override def release: UnitContinuation[Unit] = releasable.monadicClose
             }
         }
       )
@@ -245,9 +241,10 @@ object asynchronous {
       * $seedelay
       * $seeautocloseable
       */
-    def releasable[Value <: Releasable](future: UnitContinuation[Value],
-                                        dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
-      releasable(Future(TryT(future.map(Success(_)))))
+    def monadicCloseable[Value <: MonadicCloseable[UnitContinuation]](future: UnitContinuation[Value],
+                                                                      dummyImplicit: DummyImplicit =
+                                                                        DummyImplicit.dummyImplicit): Do[Value] = {
+      monadicCloseable(Future(TryT(future.map(Success(_)))))
     }
 
     /** $autocloseable
@@ -283,8 +280,8 @@ object asynchronous {
       * $seedelay
       * $seeautocloseable
       */
-    def releasable[Value <: Releasable](value: => Value): Do[Value] = {
-      releasable(Future.delay(value))
+    def monadicCloseable[Value <: MonadicCloseable[UnitContinuation]](value: => Value): Do[Value] = {
+      monadicCloseable(Future.delay(value))
     }
 
     /** $autocloseable

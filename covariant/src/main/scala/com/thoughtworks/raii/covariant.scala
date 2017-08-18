@@ -362,6 +362,16 @@ object covariant extends CovariantResourceTInstances0 {
 
   }
 
+  /** An object that may hold resources until it is closed.
+    *
+    * Similar to [[java.lang.AutoCloseable]] except the close operation is monadic.
+    *
+    * @tparam F
+    */
+  trait MonadicCloseable[F[+ _]] {
+    def monadicClose: F[Unit]
+  }
+
   /** The companion object of [[ResourceT]] that contains converters and type classes.
     *
     * @note There are some implicit method that provides [[scalaz.Monad]]s as monad transformers of `F`.
@@ -370,12 +380,17 @@ object covariant extends CovariantResourceTInstances0 {
     */
   object ResourceT {
 
-    /** @group Converters */
     def apply[F[+ _], A](run: F[Resource[F, A]]): ResourceT[F, A] = opacityTypes.apply(run)
 
-    /** @group Converters */
     def unapply[F[+ _], A](resourceT: ResourceT[F, A]): Some[F[Resource[F, A]]] =
       Some(unwrap(resourceT))
+
+    def monadicCloseable[F[+ _]: Functor, A <: MonadicCloseable[F]](run: F[A]): ResourceT[F, A] = {
+      val resource: F[Resource[F, A]] = run.map { a: A =>
+        Resource(a, a.monadicClose)
+      }
+      ResourceT(resource)
+    }
 
   }
 
