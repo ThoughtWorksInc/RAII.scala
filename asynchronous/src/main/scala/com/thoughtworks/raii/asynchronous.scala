@@ -242,8 +242,8 @@ object asynchronous {
       * $seeautocloseable
       */
     def monadicCloseable[Value <: MonadicCloseable[UnitContinuation]](future: UnitContinuation[Value],
-                                                                dummyImplicit: DummyImplicit =
-                                                                  DummyImplicit.dummyImplicit): Do[Value] = {
+                                                                      dummyImplicit: DummyImplicit =
+                                                                        DummyImplicit.dummyImplicit): Do[Value] = {
       monadicCloseable(Future(TryT(future.map(Success(_)))))
     }
 
