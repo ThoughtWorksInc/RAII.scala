@@ -92,11 +92,10 @@ private[raii] trait CovariantResourceTParallelApplicative[F[+ _]]
     Parallel({
       val fa: F[Resource[F, A]] = Parallel.unwrap[F[Resource[F, A]]](
         typeClass.point(
-          new Resource[F, A] {
-            override val value: A = a
-
-            override val release: F[Unit] = Parallel.unwrap(typeClass.point(()))
-          }
+          Resource[F, A](
+            value = a,
+            release = Parallel.unwrap(covariant.callByNameUnitCache.point[Lambda[A => F[A] @@ Parallel]])
+          )
         ))
       opacityTypes.apply(fa)
     }: ResourceT[F, A])
@@ -149,7 +148,7 @@ private[raii] trait CovariantResourceTMonad[F[+ _]]
           override def value: B = b
 
           override val release: F[Unit] = {
-            releaseB >> releaseA
+            covariant.appendMonadicUnit(releaseB, releaseA)
           }
         }
       }
@@ -241,6 +240,40 @@ private[raii] trait CovariantResourceTNondeterminism[F[+ _]]
   * }}}
   */
 object covariant extends CovariantResourceTInstances0 {
+
+  private[raii] final class CallByNameUnitCache(callByNameUnit: => Unit) {
+    @inline
+    def point[F[_]](implicit applicative: Applicative[F]): F[Unit] = {
+      applicative.point(callByNameUnit)
+    }
+  }
+
+  /** A cache of `=> Unit`.
+    *
+    * @note When using this cache to create two `UnitContinuation[UnitContinuation]`s,
+    *       {{{
+    *       import com.thoughtworks.continuation._
+    *       val continuation1 = covariant.callByNameUnitCache.point[UnitContinuation]
+    *       val continuation2 = covariant.callByNameUnitCache.point[UnitContinuation]
+    *       }}}
+    *       then the two continuations should equal to each other.
+    *
+    *       {{{
+    *       continuation1 should be(continuation2)
+    *       }}}
+    */
+  private[raii] val callByNameUnitCache = new CallByNameUnitCache(())
+
+  private[raii] def appendMonadicUnit[F[+ _]: Monad](f0: F[Unit], f1: F[Unit]): F[Unit] = {
+    val noop = callByNameUnitCache.point[F]
+    if (f0 == noop) {
+      f1
+    } else if (f1 == noop) {
+      f0
+    } else {
+      f0 >> f1
+    }
+  }
 
   /** The type-level [[http://en.cppreference.com/w/cpp/language/pimpl Pimpl]]
     * in order to prevent the Scala compiler seeing the actual type of [[ResourceT]]
@@ -349,7 +382,7 @@ object covariant extends CovariantResourceTInstances0 {
 
     @inline
     private[raii] def now[F[+ _]: Applicative, A](value: A): Resource[F, A] = {
-      Resource[F, A](value, Applicative[F].point(()))
+      Resource[F, A](value, callByNameUnitCache.point[F])
     }
   }
 
@@ -403,7 +436,7 @@ object covariant extends CovariantResourceTInstances0 {
     }
   }
 
-  private[raii] final def using[F[+ _], A, B](resourceT: ResourceT[F, A], f: A => F[B])(implicit monad: Bind[F]): F[B] = {
+  private[raii] final def using[F[+ _]: Bind, A, B](resourceT: ResourceT[F, A], f: A => F[B]): F[B] = {
     unwrap(resourceT).flatMap { fa =>
       f(fa.value).flatMap { a: B =>
         fa.release.map { _ =>
@@ -413,8 +446,7 @@ object covariant extends CovariantResourceTInstances0 {
     }
   }
 
-  private[raii] final def foreach[F[+ _], A](resourceT: ResourceT[F, A], f: A => Unit)(implicit monad: Bind[F],
-                                                                                       foldable: Foldable[F]): Unit = {
+  private[raii] final def foreach[F[+ _]: Bind: Foldable, A](resourceT: ResourceT[F, A], f: A => Unit): Unit = {
     unwrap(resourceT)
       .flatMap { fa =>
         f(fa.value)
@@ -461,7 +493,7 @@ object covariant extends CovariantResourceTInstances0 {
               override val value: B = b
 
               override val release: F[Unit] = {
-                ().point[F]
+                callByNameUnitCache.point[F]
               }
             }
           }
