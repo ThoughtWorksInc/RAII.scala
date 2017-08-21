@@ -343,7 +343,22 @@ object asynchronous {
       * $seeautocloseable
       */
     def delay[Value](value: => Value): Do[Value] = {
-      garbageCollected(Future.delay(value))
+      Do(TryT(ResourceT.delay(Try(value))))
+    }
+
+    /** Returns a nested scope of `doA`.
+      *
+      * All resources created during building `A` will be released after `A` is built.
+      *
+      * `A` must be a garbage collected type.
+      *
+      * @note This method has the same behavior as `Do.garbageCollected(doA.run)`.
+      * @see [[garbageCollected]] for creating a garbage collected `Do`
+      * @see [[AsynchronousDoOps.run]] for running a `Do` as a [[com.thoughtworks.future.Future ThoughtWorks Future]].
+      */
+    def nested[A](doA: Do[A]): Do[A] = {
+      val Do(TryT(resourceT)) = doA
+      Do(TryT(ResourceT.nested(resourceT)))
     }
 
     /** $now
