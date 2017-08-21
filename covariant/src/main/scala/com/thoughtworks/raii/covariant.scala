@@ -4,7 +4,7 @@ import com.thoughtworks.raii.covariant.{Resource, ResourceT, opacityTypes}
 
 import scala.language.higherKinds
 import scalaz.Tags.Parallel
-import scalaz.{\/, _}
+import scalaz._
 import scalaz.syntax.all._
 
 private[raii] sealed abstract class CovariantResourceTInstances3 {
@@ -46,8 +46,7 @@ private[raii] sealed abstract class CovariantResourceTInstances0 extends Covaria
 private[raii] trait CovariantResourceTPoint[F[+ _]] extends Applicative[ResourceT[F, ?]] {
   private[raii] implicit def typeClass: Applicative[F]
 
-  override def point[A](a: => A): ResourceT[F, A] =
-    opacityTypes.apply(Applicative[F].point(Resource.now(a)))
+  override def point[A](a: => A): ResourceT[F, A] = covariant.ResourceT.delay(a)
 }
 
 import com.thoughtworks.raii.covariant.opacityTypes.unwrap
@@ -401,7 +400,7 @@ object covariant extends CovariantResourceTInstances0 {
     *
     * @tparam F
     */
-  trait MonadicCloseable[F[+ _]] {
+  trait MonadicCloseable[F[+ _]] extends Any {
     def monadicClose: F[Unit]
   }
 
@@ -412,6 +411,18 @@ object covariant extends CovariantResourceTInstances0 {
     *       which will be open and release altogether when [[run]] is called.
     */
   object ResourceT {
+
+    def delay[F[+ _]: Applicative, A](a: => A): ResourceT[F, A] =
+      ResourceT(Applicative[F].point(Resource.now(a)))
+
+    def garbageCollected[F[+ _]: Applicative, A](fa: F[A]): ResourceT[F, A] = {
+      ResourceT(fa.map(Resource.now[F, A](_)))
+    }
+
+    def nested[F[+ _]: Monad, A](fa: ResourceT[F, A])(implicit dummyImplicit: DummyImplicit =
+                                                                  DummyImplicit.dummyImplicit): ResourceT[F, A] = {
+      garbageCollected(fa.run)
+    }
 
     def apply[F[+ _], A](run: F[Resource[F, A]]): ResourceT[F, A] = opacityTypes.apply(run)
 
