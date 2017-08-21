@@ -350,8 +350,7 @@ object asynchronous {
       *
       * All resources created during building `A` will be released after `A` is built.
       *
-      * `A` must be a garbage collected type.
-      *
+      * @note `A` must be a garbage collected type, i.e. not a [[java.lang.AutoCloseable]] or a [[com.thoughtworks.raii.covariant.MonadicCloseable]]
       * @note This method has the same behavior as `Do.garbageCollected(doA.run)`.
       * @see [[garbageCollected]] for creating a garbage collected `Do`
       * @see [[AsynchronousDoOps.run]] for running a `Do` as a [[com.thoughtworks.future.Future ThoughtWorks Future]].
