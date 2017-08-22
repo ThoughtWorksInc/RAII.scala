@@ -256,9 +256,9 @@ object asynchronous {
       * $seedelay
       * $seereleasable
       */
-    def autoCloseable[Value <: AutoCloseable](future: UnitContinuation[Value],
+    def autoCloseable[Value <: AutoCloseable](continuation: UnitContinuation[Value],
                                               dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
-      autoCloseable(Future(TryT(future.map(Success(_)))))
+      autoCloseable(Future(TryT(continuation.map(Success(_)))))
     }
 
     @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
