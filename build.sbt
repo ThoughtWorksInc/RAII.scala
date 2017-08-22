@@ -73,7 +73,8 @@ lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
     UnidocKeys.unidocProjectFilter in ScalaUnidoc in UnidocKeys.unidoc := {
-      inDependencies(AsynchronousSemaphoreJVM, transitive = true, includeRoot = true) || inProjects(invariantJVM)
+      inDependencies(AsynchronousSemaphoreJVM, transitive = true, includeRoot = true) ||
+      inProjects(asynchronouspoolJVM, invariantJVM)
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
     scalacOptions += "-Xexperimental",
