@@ -63,6 +63,8 @@ lazy val AsynchronousSemaphoreJVM = AsynchronousSemaphore.jvm.addSbtFiles(file("
 
 lazy val AsynchronousSemaphoreJS = AsynchronousSemaphore.js.addSbtFiles(file("../build.sbt.shared"))
 
+lazy val remote = project.dependsOn(`asynchronousJVM`)
+
 lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
