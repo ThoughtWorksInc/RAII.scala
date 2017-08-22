@@ -17,7 +17,7 @@ import scalaz.syntax.all._
 
 /** The namespace that contains the implementation of the asynchronous resource pool.
   *
-  * @example Given a factory that creates [[java.io.Writer]]s,
+  * @example Given a factory that creates resources,
   *
   *          {{{
   *          import scalaz.Tags.Parallel
@@ -27,61 +27,68 @@ import scalaz.syntax.all._
   *          import com.thoughtworks.future._
   *          import com.thoughtworks.raii.asynchronous._
   *          import com.thoughtworks.raii.asynchronouspool._
-  *          import java.io.Writer
+  *          import java.lang.AutoCloseable
+  *          
+  *          trait MyResource extends AutoCloseable {
+  *            def inUse(): Unit
+  *          }
   *
-  *          val writerStub0 = stub[Writer]
-  *          val writerStub1 = stub[Writer]
-  *          val writerStub2 = stub[Writer]
+  *          val myResourceStub0 = stub[MyResource]
+  *          println(s"myResourceStub0: ${myResourceStub0.isInstanceOf[MyResource]}")
+  *          println(s"myResourceStub0: ${myResourceStub0.isInstanceOf[MyResource]}")
+  *          val myResourceStub1 = stub[MyResource]
+  *          val myResourceStub2 = stub[MyResource]
   *
-  *          val writerFactoryMock = mockFunction[Writer]
-  *          writerFactoryMock.expects().returns(writerStub0)
-  *          writerFactoryMock.expects().returns(writerStub1)
-  *          writerFactoryMock.expects().returns(writerStub2)
+  *          val myResourceFactoryMock = mockFunction[MyResource]
+  *          myResourceFactoryMock.expects().returns(myResourceStub0)
+  *          myResourceFactoryMock.expects().returns(myResourceStub1)
+  *          myResourceFactoryMock.expects().returns(myResourceStub2)
   *          }}}
   *
-  *          then it can be converted to a resource pool, which holds some instances of `Writer`.
+  *          then it can be converted to a resource pool, which holds some instances of `MyResource`.
   *
   *          {{{
-  *          val writerPool: Do[Do[Writer]] = pool(Do.autoCloseable(writerFactoryMock()), capacity = 3)
+  *          def w = myResourceFactoryMock()
+  *          val myResourcePool: Do[Do[MyResource]] = pool(Do.autoCloseable(w), capacity = 3)
   *          }}}
   *
   *          When some clients are using the resource pool,
   *
   *          {{{
-  *          def client(doWriter: Do[Writer], operationsPerClient: Int): Do[Unit] = {
-  *            Do.nested[Unit](doWriter.flatMap { writer =>
+  *          def client(doMyResource: Do[MyResource], operationsPerClient: Int): Do[Unit] = {
+  *            Do.nested[Unit](doMyResource.flatMap { myResource =>
   *              Do.execute {
-  *                  writer.write("I'm using the Writer\n")
+  *                  myResource.inUse
   *                }
   *                .replicateM_(operationsPerClient)
   *            })
   *          }
-  *          def allClients(doWriter: Do[Writer], numberOfClients: Int, operationsPerClient: Int): ParallelDo[Unit] = {
+  *          def allClients(doMyResource: Do[MyResource], numberOfClients: Int, operationsPerClient: Int): ParallelDo[Unit] = {
   *            implicit def keepLastException = new Semigroup[Throwable] {
   *              override def append(f1: Throwable, f2: => Throwable) = f2
   *            }
-  *            Applicative[ParallelDo].replicateM_(numberOfClients, Parallel(client(doWriter, operationsPerClient)))
+  *            Applicative[ParallelDo].replicateM_(numberOfClients, Parallel(client(doMyResource, operationsPerClient)))
   *          }
   *          def usingPool(numberOfClients: Int, operationsPerClient: Int) = {
-  *            writerPool.flatMap { doWriter =>
-  *              allClients(doWriter, numberOfClients, operationsPerClient).unwrap
+  *            myResourcePool.flatMap { doMyResource =>
+  *              allClients(doMyResource, numberOfClients, operationsPerClient).unwrap
   *            }
   *          }
   *          }}}
   *
-  *          then the operations from these clients should be distributed on those `Writer`s,
-  *          and those `Writer`s should be closed after being used.
+  *          then the operations from these clients should be distributed on those `MyResource`s,
+  *          and those `MyResource`s should be closed after being used.
   *
   *          {{{
   *          usingPool(numberOfClients = 10, operationsPerClient = 10).run.map { _: Unit =>
-  *            ((writerStub0.write _): String => Unit).verify("I'm using the Writer\n").repeated(30 to 40)
-  *            ((writerStub0.close _): () => Unit).verify().once()
+  *            ((myResourceStub0.inUse _): () => Unit).verify().repeated(30 to 40)
+  *            ((myResourceStub0.close _): () => Unit).verify().once()
   *
-  *            ((writerStub1.write _): String => Unit).verify("I'm using the Writer\n").repeated(30 to 40)
-  *            ((writerStub1.close _): () => Unit).verify().once()
+  *            ((myResourceStub1.inUse _): () => Unit).verify().repeated(30 to 40)
+  *            ((myResourceStub1.close _): () => Unit).verify().once()
   *
-  *            ((writerStub2.write _): String => Unit).verify("I'm using the Writer\n").repeated(30 to 40)
-  *            ((writerStub2.close _): () => Unit).verify().once()
+  *            ((myResourceStub2.inUse _): () => Unit).verify().repeated(30 to 40)
+  *            ((myResourceStub2.close _): () => Unit).verify().once()
   *
   *            succeed
   *          }.toScalaFuture
