@@ -15,6 +15,78 @@ import scalaz.Free.Trampoline
 import scalaz.{Monoid, Trampoline}
 import scalaz.syntax.all._
 
+/** The namespace that contains the implementation of the asynchronous resource pool.
+  *
+  * @example Given a factory that creates [[java.io.Writer]]s,
+  *
+  *          {{{
+  *          import scalaz.Tags.Parallel
+  *          import scalaz._
+  *          import scalaz.syntax.tag._
+  *          import scalaz.syntax.all._
+  *          import com.thoughtworks.future._
+  *          import com.thoughtworks.raii.asynchronous._
+  *          import com.thoughtworks.raii.asynchronouspool._
+  *          import java.io.Writer
+  *
+  *          val writerStub0 = stub[Writer]
+  *          val writerStub1 = stub[Writer]
+  *          val writerStub2 = stub[Writer]
+  *
+  *          val writerFactoryMock = mockFunction[Writer]
+  *          writerFactoryMock.expects().returns(writerStub0)
+  *          writerFactoryMock.expects().returns(writerStub1)
+  *          writerFactoryMock.expects().returns(writerStub2)
+  *          }}}
+  *
+  *          then it can be converted to a resource pool, which holds some instances of `Writer`.
+  *
+  *          {{{
+  *          val writerPool: Do[Do[Writer]] = pool(Do.autoCloseable(writerFactoryMock()), capacity = 3)
+  *          }}}
+  *
+  *          When some clients are using the resource pool,
+  *
+  *          {{{
+  *          def client(doWriter: Do[Writer], operationsPerClient: Int): Do[Unit] = {
+  *            Do.nested[Unit](doWriter.flatMap { writer =>
+  *              Do.execute {
+  *                  writer.write("I'm using the Writer\n")
+  *                }
+  *                .replicateM_(operationsPerClient)
+  *            })
+  *          }
+  *          def allClients(doWriter: Do[Writer], numberOfClients: Int, operationsPerClient: Int): ParallelDo[Unit] = {
+  *            implicit def keepLastException = new Semigroup[Throwable] {
+  *              override def append(f1: Throwable, f2: => Throwable) = f2
+  *            }
+  *            Applicative[ParallelDo].replicateM_(numberOfClients, Parallel(client(doWriter, operationsPerClient)))
+  *          }
+  *          def usingPool(numberOfClients: Int, operationsPerClient: Int) = {
+  *            writerPool.flatMap { doWriter =>
+  *              allClients(doWriter, numberOfClients, operationsPerClient).unwrap
+  *            }
+  *          }
+  *          }}}
+  *
+  *          then the operations from these clients should be distributed on those `Writer`s,
+  *          and those `Writer`s should be closed after being used.
+  *
+  *          {{{
+  *          usingPool(numberOfClients = 10, operationsPerClient = 10).run.map { _: Unit =>
+  *            ((writerStub0.write _): String => Unit).verify("I'm using the Writer\n").repeated(30 to 40)
+  *            ((writerStub0.close _): () => Unit).verify().once()
+  *
+  *            ((writerStub1.write _): String => Unit).verify("I'm using the Writer\n").repeated(30 to 40)
+  *            ((writerStub1.close _): () => Unit).verify().once()
+  *
+  *            ((writerStub2.write _): String => Unit).verify("I'm using the Writer\n").repeated(30 to 40)
+  *            ((writerStub2.close _): () => Unit).verify().once()
+  *
+  *            succeed
+  *          }.toScalaFuture
+  *          }}}
+  */
 object asynchronouspool {
   private sealed trait State[A]
   private sealed trait DisableAcquire[A] extends State[A]

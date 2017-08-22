@@ -1,1 +1,12 @@
+libraryDependencies += "org.scalamock" %% "scalamock-scalatest-support" % "3.6.0" % Test
+
 scalacOptions += "-Ypartial-unification"
+
+enablePlugins(Example)
+
+exampleSuperTypes ~= { oldExampleSuperTypes =>
+  import oldExampleSuperTypes._
+  updated(indexOf("_root_.org.scalatest.FreeSpec"), "_root_.org.scalatest.AsyncFreeSpec")
+}
+
+exampleSuperTypes += "_root_.org.scalamock.scalatest.AsyncMockFactory"
