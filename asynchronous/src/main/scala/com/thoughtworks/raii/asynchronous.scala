@@ -1,10 +1,12 @@
 package com.thoughtworks.raii
 
+import java.util.concurrent.atomic.AtomicReference
+
 import com.thoughtworks.raii.covariant._
 import com.thoughtworks.tryt.covariant.TryT
 
 import scala.concurrent.ExecutionContext
-import scalaz.{-\/, @@, Applicative, ContT, Monad, MonadError, Semigroup, Trampoline, \/, \/-}
+import scalaz.{-\/, @@, Applicative, ContT, EphemeralStream, Monad, MonadError, Semigroup, Trampoline, \/, \/-}
 import scala.language.higherKinds
 import scala.util.{Failure, Success, Try}
 import scalaz.Free.Trampoline
@@ -13,11 +15,12 @@ import scalaz.std.`try`
 import ResourceT._
 import TryT._
 import com.thoughtworks.future._
-import com.thoughtworks.continuation._
+import com.thoughtworks.continuation.{UnitContinuation, _}
 import com.thoughtworks.raii.asynchronous.Do.scoped
 import com.thoughtworks.raii.shared._
 
 import scalaz.syntax.all._
+import scalaz.std.anyVal._
 
 /** The namespace that contains [[Do]].
   *
