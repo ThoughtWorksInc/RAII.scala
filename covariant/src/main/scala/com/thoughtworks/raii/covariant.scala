@@ -419,8 +419,7 @@ object covariant extends CovariantResourceTInstances0 {
       ResourceT(fa.map(Resource.now[F, A](_)))
     }
 
-    def nested[F[+ _]: Monad, A](fa: ResourceT[F, A])(implicit dummyImplicit: DummyImplicit =
-                                                                  DummyImplicit.dummyImplicit): ResourceT[F, A] = {
+    def nested[F[+ _]: Monad, A](fa: ResourceT[F, A]): ResourceT[F, A] = {
       garbageCollected(fa.run)
     }
 
