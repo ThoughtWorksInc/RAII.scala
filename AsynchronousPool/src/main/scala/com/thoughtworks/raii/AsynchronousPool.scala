@@ -114,11 +114,13 @@ object AsynchronousPool {
   final class ClosedPoolException(message: String = "This pool has been closed.", cause: Throwable = null)
       extends IllegalStateException(message, cause)
 
-  def preloaded[A](resources: Seq[A]): Resource[UnitContinuation, Do[A]] = {
-    val pool = new AsynchronousPool[A](resources)
+  /** Returns a resource pool from preloaded resoures. */
+  def preloaded[A](preloadedResources: Seq[A]): Resource[UnitContinuation, Do[A]] = {
+    val pool = new AsynchronousPool[A](preloadedResources)
     Resource(pool.acquire, pool.shutdown)
   }
 
+  /** Returns a factory of fixed sized resource pool. */
   def fixed[A](resourceFactory: Do[A], poolSize: Int): Do[Do[A]] = {
     resourceFactory.replicateM(poolSize).flatMap { resources: List[A] =>
       Do.resource[Do[A]](AsynchronousPool.preloaded[A](resources))
