@@ -19,6 +19,7 @@ import com.thoughtworks.continuation.{UnitContinuation, _}
 import com.thoughtworks.raii.asynchronous.Do.scoped
 import com.thoughtworks.raii.shared._
 
+import scala.util.control.NonFatal
 import scalaz.syntax.all._
 import scalaz.std.anyVal._
 
@@ -164,6 +165,18 @@ object asynchronous {
     * @define garbageCollected `Value` must be a garbage-collected type that does not hold native resource.
     */
   object Do {
+    def resource[A](resource: => Resource[UnitContinuation, A]): Do[A] = {
+      val resourceContinuation: UnitContinuation[Resource[UnitContinuation, Try[A]]] = UnitContinuation.delay {
+        try {
+          val Resource(a, monadicClose) = resource
+          Resource(Success(a), monadicClose)
+        } catch {
+          case NonFatal(e) =>
+            Resource(Failure(e), UnitContinuation.now(()))
+        }
+      }
+      Do(TryT(ResourceT(resourceContinuation)))
+    }
 
     def apply[Value](tryT: TryT[ResourceT[UnitContinuation, `+?`], Value]): Do[Value] = {
       opacityTypes.fromTryT(tryT)
