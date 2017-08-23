@@ -57,11 +57,11 @@ lazy val asynchronousJVM = asynchronous.jvm.addSbtFiles(file("../build.sbt.share
 
 lazy val asynchronousJS = asynchronous.js.addSbtFiles(file("../build.sbt.shared"))
 
-lazy val asynchronouspool = crossProject.crossType(CrossType.Pure).dependsOn(asynchronous)
+lazy val AsynchronousPool = crossProject.crossType(CrossType.Pure).dependsOn(asynchronous)
 
-lazy val asynchronouspoolJVM = asynchronouspool.jvm.addSbtFiles(file("../build.sbt.shared"))
+lazy val asynchronouspoolJVM = AsynchronousPool.jvm.addSbtFiles(file("../build.sbt.shared"))
 
-lazy val asynchronouspoolJS = asynchronouspool.js.addSbtFiles(file("../build.sbt.shared"))
+lazy val asynchronouspoolJS = AsynchronousPool.js.addSbtFiles(file("../build.sbt.shared"))
 
 lazy val AsynchronousSemaphore = crossProject.crossType(CrossType.Pure).dependsOn(asynchronous)
 
