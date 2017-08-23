@@ -166,14 +166,16 @@ object asynchronous {
     */
   object Do {
     def resource[A](resource: => Resource[UnitContinuation, A]): Do[A] = {
-      val tryResource = try {
-        val Resource(a, monadicClose) = resource
-        Resource(Success(a), monadicClose)
-      } catch {
-        case NonFatal(e) =>
-          Resource(Failure(e), UnitContinuation.now(()))
+      val resourceContinuation: UnitContinuation[Resource[UnitContinuation, Try[A]]] = UnitContinuation.delay {
+        try {
+          val Resource(a, monadicClose) = resource
+          Resource(Success(a), monadicClose)
+        } catch {
+          case NonFatal(e) =>
+            Resource(Failure(e), UnitContinuation.now(()))
+        }
       }
-      Do(TryT(ResourceT(UnitContinuation.now(tryResource))))
+      Do(TryT(ResourceT(resourceContinuation)))
     }
 
     def apply[Value](tryT: TryT[ResourceT[UnitContinuation, `+?`], Value]): Do[Value] = {
