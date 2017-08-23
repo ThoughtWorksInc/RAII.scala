@@ -450,8 +450,8 @@ object asynchronous {
     /**
       * Returns a `Future` of `A`, which will open `A` and release all resources during opening `A`.
       *
-      * @note `A` itself must not be a [[Do.scoped]] resources,
-      *       though `A` may depends on some [[Do.scoped]] resources during opening `A`.
+      * @note `A` itself must be [[Do.garbageCollected garbageCollected]](i.e. does not have clean up operation),
+      *       though `A` may use some non-garbage-collected resources during opening `A`.
       */
     def run: Future[A] = {
       Future(TryT(ResourceT(toContinuation(asynchronousDo)).run))
