@@ -1,10 +1,12 @@
 package com.thoughtworks.raii
 
+import java.util.concurrent.atomic.AtomicReference
+
 import com.thoughtworks.raii.covariant._
 import com.thoughtworks.tryt.covariant.TryT
 
 import scala.concurrent.ExecutionContext
-import scalaz.{-\/, @@, Applicative, ContT, Monad, MonadError, Semigroup, Trampoline, \/, \/-}
+import scalaz.{-\/, @@, Applicative, ContT, EphemeralStream, Monad, MonadError, Semigroup, Trampoline, \/, \/-}
 import scala.language.higherKinds
 import scala.util.{Failure, Success, Try}
 import scalaz.Free.Trampoline
@@ -13,11 +15,13 @@ import scalaz.std.`try`
 import ResourceT._
 import TryT._
 import com.thoughtworks.future._
-import com.thoughtworks.continuation._
+import com.thoughtworks.continuation.{UnitContinuation, _}
 import com.thoughtworks.raii.asynchronous.Do.scoped
 import com.thoughtworks.raii.shared._
 
+import scala.util.control.NonFatal
 import scalaz.syntax.all._
+import scalaz.std.anyVal._
 
 /** The namespace that contains [[Do]].
   *
@@ -25,30 +29,30 @@ import scalaz.syntax.all._
   */
 object asynchronous {
 
-  private def fromContinuation[Value](future: UnitContinuation[Resource[UnitContinuation, Try[Value]]]): Do[Value] = {
-    opacityTypes.fromTryT(TryT[RAIIContinuation, Value](ResourceT(future)))
+  private def fromContinuation[A](future: UnitContinuation[Resource[UnitContinuation, Try[A]]]): Do[A] = {
+    opacityTypes.fromTryT(TryT[RAIIContinuation, A](ResourceT(future)))
   }
 
-  private def toContinuation[Value](doValue: Do[Value]): UnitContinuation[Resource[UnitContinuation, Try[Value]]] = {
+  private def toContinuation[A](doValue: Do[A]): UnitContinuation[Resource[UnitContinuation, Try[A]]] = {
     val ResourceT(future) = TryT.unwrap(opacityTypes.toTryT(doValue))
     future
   }
 
   /** @template */
-  private type RAIIContinuation[+Value] = ResourceT[UnitContinuation, Value]
+  private type RAIIContinuation[+A] = ResourceT[UnitContinuation, A]
 
   private[asynchronous] trait OpacityTypes {
-    type Do[+Value]
+    type Do[+A]
 
-    private[asynchronous] def fromTryT[Value](run: TryT[RAIIContinuation, Value]): Do[Value]
+    private[asynchronous] def fromTryT[A](run: TryT[RAIIContinuation, A]): Do[A]
 
-    private[asynchronous] def toTryT[Value](doValue: Do[Value]): TryT[RAIIContinuation, Value]
+    private[asynchronous] def toTryT[A](doValue: Do[A]): TryT[RAIIContinuation, A]
 
     //TODO: BindRec
     implicit private[asynchronous] def asynchronousDoMonadErrorInstances: MonadError[Do, Throwable]
 
     implicit private[asynchronous] def doParallelApplicative(
-        implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[Value => Do[Value] @@ Parallel]]
+        implicit throwableSemigroup: Semigroup[Throwable]): Applicative[Lambda[A => Do[A] @@ Parallel]]
   }
 
   /** The type-level [[http://en.cppreference.com/w/cpp/language/pimpl Pimpl]] in order to prevent the Scala compiler seeing the actual type of [[Do]]
@@ -56,13 +60,13 @@ object asynchronous {
     * @note For internal usage only.
     */
   val opacityTypes: OpacityTypes = new OpacityTypes {
-    override type Do[+Value] = TryT[RAIIContinuation, Value]
+    override type Do[+A] = TryT[RAIIContinuation, A]
 
-    override private[asynchronous] def fromTryT[Value](
-        run: TryT[RAIIContinuation, Value]): TryT[RAIIContinuation, Value] = run
+    override private[asynchronous] def fromTryT[A](
+        run: TryT[RAIIContinuation, A]): TryT[RAIIContinuation, A] = run
 
-    override private[asynchronous] def toTryT[Value](
-        doa: TryT[RAIIContinuation, Value]): TryT[RAIIContinuation, Value] = doa
+    override private[asynchronous] def toTryT[A](
+        doa: TryT[RAIIContinuation, A]): TryT[RAIIContinuation, A] = doa
 
     override private[asynchronous] def asynchronousDoMonadErrorInstances
       : MonadError[TryT[RAIIContinuation, ?], Throwable] = {
@@ -85,11 +89,11 @@ object asynchronous {
     *  - [[com.thoughtworks.continuation.UnitContinuation asynchronous programming]]
     *  - [[ParallelDo parallel computing]]
     *
-    * @note This `Do` type is an [[https://www.reddit.com/r/scala/comments/5qbdgq/value_types_without_anyval/dcxze9q/ opacity alias]] to `UnitContinuation[Resource[UnitContinuation, Try[Value]]]`.
+    * @note This `Do` type is an [[https://www.reddit.com/r/scala/comments/5qbdgq/value_types_without_anyval/dcxze9q/ opacity alias]] to `UnitContinuation[Resource[UnitContinuation, Try[A]]]`.
     * @see [[Do$ Do]] companion object for all type classes and helper functions for this `Do` type.
     * @template
     */
-  type Do[+Value] = opacityTypes.Do[Value]
+  type Do[+A] = opacityTypes.Do[A]
 
   /** A [[Do]] tagged as [[scalaz.Tags.Parallel Parallel]].
     *
@@ -118,11 +122,11 @@ object asynchronous {
     *          doInput should be(originalDoInput)
     *          }}}
     *
-    * @see [[ParallelDo.doParallelApplicative]] for the [[scalaz.Applicative Applicative]] type class for parallel computing.
+    * @see [[doParallelApplicative]] for the [[scalaz.Applicative Applicative]] type class for parallel computing.
     *
     * @template
     */
-  type ParallelDo[Value] = Do[Value] @@ Parallel
+  type ParallelDo[A] = Do[A] @@ Parallel
 
   /** Returns an [[scalaz.Applicative Applicative]] type class for parallel computing.
     *
@@ -153,20 +157,32 @@ object asynchronous {
     *
     * @define seeautocloseable @see [[autoCloseable]] for auto-closeable `Do`
     *
-    * @define seereleasable @see [[releasable]] for creating a `Do` whose [[covariant.Resource.release release]] operation is asynchronous.
+    * @define seereleasable @see [[monadicCloseable]] for creating a `Do` whose [[covariant.Resource.release release]] operation is asynchronous.
     *
     * @define nonstrict Since the `Do` is non-strict,
-    *                   `Value` will be recreated each time it is sequenced into a larger `Do`.
+    *                   `A` will be recreated each time it is sequenced into a larger `Do`.
     *
-    * @define garbageCollected `Value` must be a garbage-collected type that does not hold native resource.
+    * @define garbageCollected `A` must be a garbage-collected type that does not hold native resource.
     */
   object Do {
+    def resource[A](resource: => Resource[UnitContinuation, A]): Do[A] = {
+      val resourceContinuation: UnitContinuation[Resource[UnitContinuation, Try[A]]] = UnitContinuation.delay {
+        try {
+          val Resource(a, monadicClose) = resource
+          Resource(Success(a), monadicClose)
+        } catch {
+          case NonFatal(e) =>
+            Resource(Failure(e), UnitContinuation.now(()))
+        }
+      }
+      Do(TryT(ResourceT(resourceContinuation)))
+    }
 
-    def apply[Value](tryT: TryT[ResourceT[UnitContinuation, `+?`], Value]): Do[Value] = {
+    def apply[A](tryT: TryT[ResourceT[UnitContinuation, `+?`], A]): Do[A] = {
       opacityTypes.fromTryT(tryT)
     }
 
-    def unapply[Value](doValue: Do[Value]): Some[TryT[ResourceT[UnitContinuation, `+?`], Value]] = {
+    def unapply[A](doValue: Do[A]): Some[TryT[ResourceT[UnitContinuation, `+?`], A]] = {
       Some(opacityTypes.toTryT(doValue))
     }
 
@@ -176,19 +192,19 @@ object asynchronous {
       * $seedelay
       * $seeautocloseable
       */
-    def monadicCloseable[Value <: MonadicCloseable[UnitContinuation]](future: Future[Value]): Do[Value] = {
+    def monadicCloseable[A <: MonadicCloseable[UnitContinuation]](future: Future[A]): Do[A] = {
       val Future(TryT(continuation)) = future
       fromContinuation(
         continuation.map {
           case failure @ Failure(e) =>
-            new Resource[UnitContinuation, Try[Value]] {
-              override val value: Try[Value] = Failure(e)
+            new Resource[UnitContinuation, Try[A]] {
+              override val value: Try[A] = Failure(e)
               override def release: UnitContinuation[Unit] = {
                 UnitContinuation.now(())
               }
             }
           case success @ Success(releasable) =>
-            new Resource[UnitContinuation, Try[Value]] {
+            new Resource[UnitContinuation, Try[A]] {
               override val value = Success(releasable)
               override def release: UnitContinuation[Unit] = releasable.monadicClose
             }
@@ -197,7 +213,7 @@ object asynchronous {
     }
 
     @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
-    def scoped[Value <: AutoCloseable](future: Future[Value]): Do[Value] = {
+    def scoped[A <: AutoCloseable](future: Future[A]): Do[A] = {
       autoCloseable(future)
     }
 
@@ -207,20 +223,20 @@ object asynchronous {
       * $seedelay
       * $seereleasable
       */
-    def autoCloseable[Value <: AutoCloseable](future: Future[Value]): Do[Value] = {
+    def autoCloseable[A <: AutoCloseable](future: Future[A]): Do[A] = {
       val Future(TryT(continuation)) = future
       fromContinuation(
         continuation.map {
           case failure @ Failure(e) =>
-            new Resource[UnitContinuation, Try[Value]] {
-              override val value: Try[Value] = failure
+            new Resource[UnitContinuation, Try[A]] {
+              override val value: Try[A] = failure
               override val release: UnitContinuation[Unit] = {
                 UnitContinuation.now(())
               }
             }
           case success @ Success(closeable) =>
-            new Resource[UnitContinuation, Try[Value]] {
-              override val value: Try[Value] = success
+            new Resource[UnitContinuation, Try[A]] {
+              override val value: Try[A] = success
               override val release: UnitContinuation[Unit] = {
                 Continuation.delay(closeable.close())
               }
@@ -230,8 +246,8 @@ object asynchronous {
     }
 
     @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
-    def scoped[Value <: AutoCloseable](future: UnitContinuation[Value],
-                                       dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
+    def scoped[A <: AutoCloseable](future: UnitContinuation[A],
+                                       dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
       autoCloseable(future)
     }
 
@@ -241,9 +257,9 @@ object asynchronous {
       * $seedelay
       * $seeautocloseable
       */
-    def monadicCloseable[Value <: MonadicCloseable[UnitContinuation]](future: UnitContinuation[Value],
+    def monadicCloseable[A <: MonadicCloseable[UnitContinuation]](future: UnitContinuation[A],
                                                                       dummyImplicit: DummyImplicit =
-                                                                        DummyImplicit.dummyImplicit): Do[Value] = {
+                                                                        DummyImplicit.dummyImplicit): Do[A] = {
       monadicCloseable(Future(TryT(future.map(Success(_)))))
     }
 
@@ -253,16 +269,16 @@ object asynchronous {
       * $seedelay
       * $seereleasable
       */
-    def autoCloseable[Value <: AutoCloseable](future: UnitContinuation[Value],
-                                              dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
-      autoCloseable(Future(TryT(future.map(Success(_)))))
+    def autoCloseable[A <: AutoCloseable](continuation: UnitContinuation[A],
+                                              dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
+      autoCloseable(Future(TryT(continuation.map(Success(_)))))
     }
 
     @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
-    def scoped[Value <: AutoCloseable](contT: ContT[Trampoline, Unit, Value]): Do[Value] = {
+    def scoped[A <: AutoCloseable](contT: ContT[Trampoline, Unit, A]): Do[A] = {
       autoCloseable(
-        Future(TryT(Continuation { (continue: Try[Value] => Trampoline[Unit]) =>
-          contT { value: Value =>
+        Future(TryT(Continuation { (continue: Try[A] => Trampoline[Unit]) =>
+          contT { value: A =>
             continue(Success(value))
           }
         }))
@@ -270,7 +286,7 @@ object asynchronous {
     }
 
     @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
-    def scoped[Value <: AutoCloseable](value: => Value): Do[Value] = {
+    def scoped[A <: AutoCloseable](value: => A): Do[A] = {
       autoCloseable(value)
     }
 
@@ -280,7 +296,7 @@ object asynchronous {
       * $seedelay
       * $seeautocloseable
       */
-    def monadicCloseable[Value <: MonadicCloseable[UnitContinuation]](value: => Value): Do[Value] = {
+    def monadicCloseable[A <: MonadicCloseable[UnitContinuation]](value: => A): Do[A] = {
       monadicCloseable(Future.delay(value))
     }
 
@@ -289,7 +305,7 @@ object asynchronous {
       * $seenow
       * $seedelay
       */
-    def autoCloseable[Value <: AutoCloseable](value: => Value): Do[Value] = {
+    def autoCloseable[A <: AutoCloseable](value: => A): Do[A] = {
       autoCloseable(Future.delay(value))
     }
 
@@ -300,11 +316,11 @@ object asynchronous {
       * $seeautocloseable
       * $seedelay
       */
-    def garbageCollected[Value](future: Future[Value]): Do[Value] = {
+    def garbageCollected[A](future: Future[A]): Do[A] = {
       val Future(TryT(continuation)) = future
       fromContinuation(
         continuation.map { either =>
-          Resource.now[UnitContinuation, Try[Value]](either)
+          Resource.now[UnitContinuation, Try[A]](either)
         }
       )
     }
@@ -316,8 +332,8 @@ object asynchronous {
       * $seeautocloseable
       * $seedelay
       */
-    def garbageCollected[Value](continuation: UnitContinuation[Value],
-                                dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[Value] = {
+    def garbageCollected[A](continuation: UnitContinuation[A],
+                                dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
       garbageCollected(Future(TryT(continuation.map(Success(_)))))
     }
 
@@ -328,9 +344,9 @@ object asynchronous {
       * $seeautocloseable
       * $seedelay
       */
-    def garbageCollected[Value](contT: ContT[Trampoline, Unit, Value]): Do[Value] = {
-      garbageCollected(Future(TryT(Continuation { continue: (Try[Value] => Trampoline[Unit]) =>
-        contT.run { value: Value =>
+    def garbageCollected[A](contT: ContT[Trampoline, Unit, A]): Do[A] = {
+      garbageCollected(Future(TryT(Continuation { continue: (Try[A] => Trampoline[Unit]) =>
+        contT.run { value: A =>
           continue(Success(value))
         }
       })))
@@ -342,7 +358,7 @@ object asynchronous {
       * $seenow
       * $seeautocloseable
       */
-    def delay[Value](value: => Value): Do[Value] = {
+    def delay[A](value: => A): Do[A] = {
       Do(TryT(ResourceT.delay(Try(value))))
     }
 
@@ -365,20 +381,20 @@ object asynchronous {
       * $seedelay
       * $seeautocloseable
       */
-    def now[Value](value: Value): Do[Value] = {
+    def now[A](value: A): Do[A] = {
       garbageCollected(Future.now(value))
     }
 
-    def async[Value](start: (Resource[UnitContinuation, Try[Value]] => Unit) => Unit): Do[Value] = {
+    def async[A](start: (Resource[UnitContinuation, Try[A]] => Unit) => Unit): Do[A] = {
       Do(TryT(ResourceT(UnitContinuation.async(start))))
     }
 
-    def safeAsync[Value](
-        start: (Resource[UnitContinuation, Try[Value]] => Trampoline[Unit]) => Trampoline[Unit]): Do[Value] = {
+    def safeAsync[A](
+        start: (Resource[UnitContinuation, Try[A]] => Trampoline[Unit]) => Trampoline[Unit]): Do[A] = {
       Do(TryT(ResourceT(UnitContinuation.safeAsync(start))))
     }
 
-    def suspend[Value](doValue: => Do[Value]): Do[Value] = {
+    def suspend[A](doValue: => Do[A]): Do[A] = {
       Do.safeAsync(doValue.safeOnComplete(_))
     }
 
@@ -413,43 +429,43 @@ object asynchronous {
       * $seenow
       * $seeautocloseable
       */
-    def execute[Value](value: => Value)(implicit executorContext: ExecutionContext): Do[Value] = {
+    def execute[A](value: => A)(implicit executorContext: ExecutionContext): Do[A] = {
       garbageCollected(Future.execute(value))
     }
 
   }
 
-  implicit final class AsynchronousDoOps[Value](asynchronousDo: Do[Value]) {
+  implicit final class AsynchronousDoOps[A](asynchronousDo: Do[A]) {
 
-    def onComplete(continue: Resource[UnitContinuation, Try[Value]] => Unit) = {
+    def onComplete(continue: Resource[UnitContinuation, Try[A]] => Unit) = {
       val Do(TryT(ResourceT(continuation))) = asynchronousDo
       continuation.onComplete(continue)
     }
 
-    def safeOnComplete(continue: Resource[UnitContinuation, Try[Value]] => Trampoline[Unit]) = {
+    def safeOnComplete(continue: Resource[UnitContinuation, Try[A]] => Trampoline[Unit]) = {
       val Do(TryT(ResourceT(continuation))) = asynchronousDo
       continuation.safeOnComplete(continue)
     }
 
     /**
-      * Returns a `Future` of `Value`, which will open `Value` and release all resources during opening `Value`.
+      * Returns a `Future` of `A`, which will open `A` and release all resources during opening `A`.
       *
-      * @note `Value` itself must not be a [[scoped]] resources,
-      *       though `Value` may depends on some [[scoped]] resources during opening `Value`.
+      * @note `A` itself must be [[Do.garbageCollected garbageCollected]](i.e. does not have clean up operation),
+      *       though `A` may use some non-garbage-collected resources during opening `A`.
       */
-    def run: Future[Value] = {
+    def run: Future[A] = {
       Future(TryT(ResourceT(toContinuation(asynchronousDo)).run))
     }
 
-    /** Returns a `Do` of `B` based on a `Do` of `Value` and a function that creates a `Do` of `B`,
-      * for those `B` do not reference to `Value` or `Value` is a garbage collected object.
+    /** Returns a `Do` of `B` based on a `Do` of `A` and a function that creates a `Do` of `B`,
+      * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
       * @note `intransitiveFlatMap` is similar to `flatMap` in [[asynchronousDoMonadErrorInstances]],
-      *       except `intransitiveFlatMap` will release `Value` right after `B` is created.
+      *       except `intransitiveFlatMap` will release `A` right after `B` is created.
       *
-      *       Don't use this method if you need to retain `Value` until `B` is released.
+      *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def intransitiveFlatMap[B](f: Value => Do[B]): Do[B] = {
+    def intransitiveFlatMap[B](f: A => Do[B]): Do[B] = {
       val resourceA = ResourceT(toContinuation(asynchronousDo))
       val resourceB = resourceA.intransitiveFlatMap[Try[B]] {
         case Failure(e) =>
@@ -461,15 +477,15 @@ object asynchronous {
       fromContinuation(future)
     }
 
-    /** Returns a `Do` of `B` based on a `Do` of `Value` and a function that creates `B`,
-      * for those `B` do not reference to `Value` or `Value` is a garbage collected object.
+    /** Returns a `Do` of `B` based on a `Do` of `A` and a function that creates `B`,
+      * for those `B` do not reference to `A` or `A` is a garbage collected object.
       *
       * @note `intransitiveMap` is similar to `map` in [[asynchronousDoMonadErrorInstances]],
-      *       except `intransitiveMap` will release `Value` right after `B` is created.
+      *       except `intransitiveMap` will release `A` right after `B` is created.
       *
-      *       Don't use this method if you need to retain `Value` until `B` is released.
+      *       Don't use this method if you need to retain `A` until `B` is released.
       */
-    def intransitiveMap[B](f: Value => B): Do[B] = {
+    def intransitiveMap[B](f: A => B): Do[B] = {
       val resourceA = ResourceT(toContinuation(asynchronousDo))
       val resourceB = resourceA.intransitiveMap(_.map(f))
       val ResourceT(future) = resourceB
@@ -479,12 +495,12 @@ object asynchronous {
     /** Converts `asynchronousDo` to a reference counted wrapper.
       *
       * When the wrapper `Do` is used by multiple larger `Do` at the same time,
-      * only one `Value` instance is created.
-      * The underlying `Value` will be [[covariant.Resource.release release]]d only once,
+      * only one `A` instance is created.
+      * The underlying `A` will be [[covariant.Resource.release release]]d only once,
       * when all users [[covariant.Resource.release release]] the wrapper `Do`.
       */
-    def shared: Do[Value] = {
-      val sharedFuture: RAIIContinuation[Try[Value]] = TryT.unwrap(opacityTypes.toTryT(asynchronousDo)).shared
+    def shared: Do[A] = {
+      val sharedFuture: RAIIContinuation[Try[A]] = TryT.unwrap(opacityTypes.toTryT(asynchronousDo)).shared
       opacityTypes.fromTryT(TryT(sharedFuture))
     }
   }

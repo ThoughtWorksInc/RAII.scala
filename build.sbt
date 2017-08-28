@@ -57,6 +57,12 @@ lazy val asynchronousJVM = asynchronous.jvm.addSbtFiles(file("../build.sbt.share
 
 lazy val asynchronousJS = asynchronous.js.addSbtFiles(file("../build.sbt.shared"))
 
+lazy val AsynchronousPool = crossProject.crossType(CrossType.Pure).dependsOn(asynchronous)
+
+lazy val asynchronouspoolJVM = AsynchronousPool.jvm.addSbtFiles(file("../build.sbt.shared"))
+
+lazy val asynchronouspoolJS = AsynchronousPool.js.addSbtFiles(file("../build.sbt.shared"))
+
 lazy val AsynchronousSemaphore = crossProject.crossType(CrossType.Pure).dependsOn(asynchronous)
 
 lazy val AsynchronousSemaphoreJVM = AsynchronousSemaphore.jvm.addSbtFiles(file("../build.sbt.shared"))
@@ -69,7 +75,8 @@ lazy val unidoc = project
   .enablePlugins(StandaloneUnidoc, TravisUnidocTitle)
   .settings(
     UnidocKeys.unidocProjectFilter in ScalaUnidoc in UnidocKeys.unidoc := {
-      inDependencies(AsynchronousSemaphoreJVM, transitive = true, includeRoot = true) || inProjects(invariantJVM)
+      inDependencies(AsynchronousSemaphoreJVM, transitive = true, includeRoot = true) ||
+      inProjects(asynchronouspoolJVM, invariantJVM)
     },
     addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
     scalacOptions += "-Xexperimental",

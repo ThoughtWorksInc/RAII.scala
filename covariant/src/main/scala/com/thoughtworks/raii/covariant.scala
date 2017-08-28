@@ -408,7 +408,7 @@ object covariant extends CovariantResourceTInstances0 {
     *
     * @note There are some implicit method that provides [[scalaz.Monad]]s as monad transformers of `F`.
     *       Those monads running will collect all resources,
-    *       which will be open and release altogether when [[run]] is called.
+    *       which will be open and release altogether when [[ResourceT.run]] is called.
     */
   object ResourceT {
 
