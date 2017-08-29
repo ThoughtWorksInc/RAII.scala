@@ -1,7 +1,7 @@
 package com.thoughtworks.raii
 
 import java.io.{ObjectOutputStream, ByteArrayOutputStream, ObjectInputStream, ByteArrayInputStream}
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success, Try, DynamicVariable}
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.pattern.ask
 import akka.util.Timeout
@@ -45,7 +45,11 @@ class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeo
   def jump: Do[ActorRef] = Do.async { (remoteContinuation: RemoteContinuation[ActorRef]) =>
     {
       val newActor = actorSystem.actorOf(Props(new RemoteActor))
-      val remoteContinuationBuffer = sys.error("todo") // todo
+      val remoteContinuationBuffer = {
+        val byteArrayOutputStream = new ByteArrayOutputStream()
+        new ObjectOutputStream(byteArrayOutputStream).writeObject(remoteContinuation)
+        byteArrayOutputStream.toByteArray
+      }
       (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
         case Success(Receipt(receipt)) =>
           receipt match {
@@ -61,15 +65,18 @@ class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeo
 object Remote {
   type RemoteContinuation[A] = (Resource[UnitContinuation, Try[A]]) => Unit
 
+  val remoteActorSystemStore: DynamicVariable[RemoteActorSystem] = new DynamicVariable[RemoteActorSystem](null)
+
   implicit class RemoteActorSystem(val actorSystem: ActorSystem) extends Serializable {
     def writeReplace: Any = {
-      // todo
+      remoteActorSystemStore.value_=(this)
+      RemoteActorSystemProxy
     }
   }
 
-  class RemoteActorSystemProxy extends Serializable {
+  object RemoteActorSystemProxy extends Serializable {
     def readResolve: Any = {
-      // todo
+      remoteActorSystemStore.value
     }
   }
 
