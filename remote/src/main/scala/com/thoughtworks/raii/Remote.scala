@@ -37,25 +37,32 @@ class RemoteActor extends Actor {
   }
 }
 
-class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeout: Timeout) {
+class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeout: Timeout) extends Serializable {
 
   import Remote._
   import remoteActorSystem.actorSystem
   import actorSystem.dispatcher
 
+  val log = {
+    implicit val logSource: LogSource[Remote] = new LogSource[Remote] {
+      override def genString(t: Remote): String = toString
+    }
+    Logging(remoteActorSystem.actorSystem, this)
+  }
+
+  log.info(s"remote context $this constructed")
+
   def jump: Do[ActorRef] = Do.async { (remoteContinuation: RemoteContinuation[ActorRef]) =>
     {
-      remoteActorSystemStore.withValue(remoteActorSystem) {
+      log.info(s"jump of $this is invoked")
+      remoteStore.withValue(this) {
         val newActor = actorSystem.actorOf(Props(new RemoteActor))
         val remoteContinuationBuffer = {
           val byteArrayOutputStream = new ByteArrayOutputStream()
           new ObjectOutputStream(byteArrayOutputStream).writeObject(remoteContinuation)
           byteArrayOutputStream.toByteArray
         }
-        implicit val logSource = new LogSource[Remote] {
-          override def genString(t: Remote): String = toString
-        }
-        val log = Logging(remoteActorSystem.actorSystem, this)
+
         (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
           case Success(Receipt(receipt)) =>
             receipt match {
@@ -67,22 +74,31 @@ class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeo
       }
     }
   }
+
+  def writeReplace: Any = {
+    log.info(s"writeReplace of $this is invoked")
+    RemoteProxy
+  }
 }
 
-object Remote {
+case object Remote {
   type RemoteContinuation[A] = (Resource[UnitContinuation, Try[A]]) => Unit
 
-  val remoteActorSystemStore: DynamicVariable[RemoteActorSystem] = new DynamicVariable[RemoteActorSystem](null)
+  val remoteStore: DynamicVariable[Remote] = new DynamicVariable[Remote](null)
 
-  implicit class RemoteActorSystem(val actorSystem: ActorSystem) extends Serializable {
-    def writeReplace: Any = {
-      RemoteActorSystemProxy
-    }
-  }
+  implicit class RemoteActorSystem(val actorSystem: ActorSystem)
 
-  object RemoteActorSystemProxy extends Serializable {
+  object RemoteProxy extends Serializable {
     def readResolve: Any = {
-      remoteActorSystemStore.value
+      val remote = remoteStore.value
+      val log = {
+        implicit val logSource: LogSource[Remote] = new LogSource[Remote] {
+          override def genString(t: Remote): String = toString
+        }
+        Logging(remote.remoteActorSystem.actorSystem, remote)
+      }
+      log.info(s"readResolve of $remote is invoked")
+      remote
     }
   }
 
@@ -94,10 +110,12 @@ object Remote {
         UnitContinuation.delay {
           import actorSystem.dispatcher
           val Future(TryT(tryFinalizer)) = actorSystem.terminate.toThoughtworksFuture
-          implicit val logSource = new LogSource[Remote.this.type] {
-            override def genString(t: Remote.this.type): String = toString
+          val log = {
+            implicit val logSource: LogSource[Remote.this.type] = new LogSource[Remote.this.type] {
+              override def genString(t: Remote.this.type): String = toString
+            }
+            Logging(actorSystem, this)
           }
-          val log = Logging(actorSystem, this)
           tryFinalizer.map {
             case Success(_)   => log.info(s"actorSystem $actorSystem terminated")
             case Failure(err) => log.error(s"termination of actorSystem $actorSystem failed with $err")
