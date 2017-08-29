@@ -14,32 +14,44 @@ import com.thoughtworks.raii.asynchronous._
 import com.thoughtworks.raii.covariant._
 
 case class Dispatch(remoteContinuationBuffer: Array[Byte])
-case class Receipt(receipt: Try[Unit])
+
+case class Receipt[A](receipt: Try[A])
 
 class RemoteActor extends Actor {
+
   import Remote.RemoteContinuation
 
   override def receive: Receive = {
     case Dispatch(remoteContinuationBuffer) =>
-      new ObjectInputStream(new ByteArrayInputStream(remoteContinuationBuffer)).readObject().asInstanceOf[RemoteContinuation[ActorRef]]
-
+      val remoteContinuation: RemoteContinuation[ActorRef] = new ObjectInputStream(
+        new ByteArrayInputStream(remoteContinuationBuffer)).readObject().asInstanceOf[RemoteContinuation[ActorRef]]
+      val value: Try[ActorRef] = Success(self)
+      val remoteActorSystem = context.system.asInstanceOf[Remote].remoteActorSystem
+      val release: UnitContinuation[Unit] = UnitContinuation.delay {
+        remoteActorSystem.actorSystem.stop(self)
+      }
+      val remoteContinuationParameter: Resource[UnitContinuation, Try[ActorRef]] = Resource(value, release)
+      remoteContinuation(remoteContinuationParameter)
+      sender ! Receipt(value)
   }
 }
 
 class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeout: Timeout) {
+
   import Remote._
   import remoteActorSystem.actorSystem
   import actorSystem.dispatcher
 
-  def jump: Do[ActorRef] = Do.async {
-    (remoteContinuation: RemoteContinuation[ActorRef]) => {
+  def jump: Do[ActorRef] = Do.async { (remoteContinuation: RemoteContinuation[ActorRef]) =>
+    {
       val newActor = actorSystem.actorOf(Props(new RemoteActor))
       val remoteContinuationBuffer = sys.error("todo") // todo
       (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
-        case Success(Receipt(receipt)) => receipt match {
-          case Success(_) =>
-          case Failure(err) =>
-        }
+        case Success(Receipt(receipt)) =>
+          receipt match {
+            case Success(_)   =>
+            case Failure(err) =>
+          }
         case Failure(err) =>
       }
     }
@@ -64,14 +76,17 @@ object Remote {
   def apply(makeActorSystem: => ActorSystem)(implicit timeout: Timeout): Do[Remote] = {
     Do.resource {
       val actorSystem = makeActorSystem
-      Resource(new Remote(actorSystem), UnitContinuation.delay {
-        import actorSystem.dispatcher
-        val Future(TryT(tryFinalizer)) = actorSystem.terminate.toThoughtworksFuture
-        tryFinalizer.map {
-          case Success(_) => // todo
-          case Failure(err) =>
-        }
-      }.join)
+      Resource(
+        new Remote(actorSystem),
+        UnitContinuation.delay {
+          import actorSystem.dispatcher
+          val Future(TryT(tryFinalizer)) = actorSystem.terminate.toThoughtworksFuture
+          tryFinalizer.map {
+            case Success(_)   => // todo
+            case Failure(err) =>
+          }
+        }.join
+      )
     }
   }
 }
