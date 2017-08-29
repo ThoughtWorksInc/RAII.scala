@@ -44,19 +44,21 @@ class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeo
 
   def jump: Do[ActorRef] = Do.async { (remoteContinuation: RemoteContinuation[ActorRef]) =>
     {
-      val newActor = actorSystem.actorOf(Props(new RemoteActor))
-      val remoteContinuationBuffer = {
-        val byteArrayOutputStream = new ByteArrayOutputStream()
-        new ObjectOutputStream(byteArrayOutputStream).writeObject(remoteContinuation)
-        byteArrayOutputStream.toByteArray
-      }
-      (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
-        case Success(Receipt(receipt)) =>
-          receipt match {
-            case Success(_)   =>
-            case Failure(err) =>
-          }
-        case Failure(err) =>
+      remoteActorSystemStore.withValue(remoteActorSystem) {
+        val newActor = actorSystem.actorOf(Props(new RemoteActor))
+        val remoteContinuationBuffer = {
+          val byteArrayOutputStream = new ByteArrayOutputStream()
+          new ObjectOutputStream(byteArrayOutputStream).writeObject(remoteContinuation)
+          byteArrayOutputStream.toByteArray
+        }
+        (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
+          case Success(Receipt(receipt)) =>
+            receipt match {
+              case Success(_)   =>
+              case Failure(err) =>
+            }
+          case Failure(err) =>
+        }
       }
     }
   }
@@ -69,7 +71,6 @@ object Remote {
 
   implicit class RemoteActorSystem(val actorSystem: ActorSystem) extends Serializable {
     def writeReplace: Any = {
-      remoteActorSystemStore.value_=(this)
       RemoteActorSystemProxy
     }
   }
