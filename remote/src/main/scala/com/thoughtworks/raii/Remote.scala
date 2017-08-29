@@ -13,6 +13,7 @@ import com.thoughtworks.continuation._
 import com.thoughtworks.future._
 import com.thoughtworks.raii.asynchronous._
 import com.thoughtworks.raii.covariant._
+import scala.concurrent.duration.{SECONDS, FiniteDuration}
 
 case class Dispatch(remoteContinuationBuffer: Array[Byte])
 
@@ -20,16 +21,19 @@ case class Receipt[A](receipt: Try[A])
 
 class RemoteActor extends Actor {
 
-  import Remote.RemoteContinuation
+  import Remote.{RemoteContinuation, actorSystemStore}
 
   override def receive: Receive = {
     case Dispatch(remoteContinuationBuffer) =>
-      val remoteContinuation: RemoteContinuation[ActorRef] = new ObjectInputStream(
-        new ByteArrayInputStream(remoteContinuationBuffer)).readObject().asInstanceOf[RemoteContinuation[ActorRef]]
+      val remoteContinuation: RemoteContinuation[ActorRef] = actorSystemStore.withValue(context.system) {
+        new ObjectInputStream(new ByteArrayInputStream(remoteContinuationBuffer))
+          .readObject()
+          .asInstanceOf[RemoteContinuation[ActorRef]]
+      }
       val value: Try[ActorRef] = Success(self)
-      val remoteActorSystem = context.system.asInstanceOf[Remote].remoteActorSystem
+      val actorSystem = context.system.asInstanceOf[Remote].actorSystem
       val release: UnitContinuation[Unit] = UnitContinuation.delay {
-        remoteActorSystem.actorSystem.stop(self)
+        actorSystem.stop(self)
       }
       val remoteContinuationParameter: Resource[UnitContinuation, Try[ActorRef]] = Resource(value, release)
       remoteContinuation(remoteContinuationParameter)
@@ -37,17 +41,16 @@ class RemoteActor extends Actor {
   }
 }
 
-class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeout: Timeout) extends Serializable {
+class Remote(val actorSystem: ActorSystem)(implicit val timeout: Timeout) extends Serializable {
 
   import Remote._
-  import remoteActorSystem.actorSystem
   import actorSystem.dispatcher
 
   val log = {
     implicit val logSource: LogSource[Remote] = new LogSource[Remote] {
       override def genString(t: Remote): String = toString
     }
-    Logging(remoteActorSystem.actorSystem, this)
+    Logging(actorSystem, this)
   }
 
   log.info(s"remote context $this constructed")
@@ -55,23 +58,23 @@ class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeo
   def jump: Do[ActorRef] = Do.async { (remoteContinuation: RemoteContinuation[ActorRef]) =>
     {
       log.info(s"jump of $this is invoked")
-      remoteStore.withValue(this) {
-        val newActor = actorSystem.actorOf(Props(new RemoteActor))
-        val remoteContinuationBuffer = {
-          val byteArrayOutputStream = new ByteArrayOutputStream()
-          new ObjectOutputStream(byteArrayOutputStream).writeObject(remoteContinuation)
-          byteArrayOutputStream.toByteArray
-        }
 
-        (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
-          case Success(Receipt(receipt)) =>
-            receipt match {
-              case Success(returnedActor) => log.info(s"remote execution returned from $returnedActor")
-              case Failure(err)           => log.error(s"remote execution failed with $err")
-            }
-          case Failure(err) => log.error(s"akka messaging failed with $err")
-        }
+      val newActor = actorSystem.actorOf(Props(new RemoteActor))
+      val remoteContinuationBuffer = {
+        val byteArrayOutputStream = new ByteArrayOutputStream()
+        new ObjectOutputStream(byteArrayOutputStream).writeObject(remoteContinuation)
+        byteArrayOutputStream.toByteArray
       }
+
+      (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
+        case Success(Receipt(receipt)) =>
+          receipt match {
+            case Success(returnedActor) => log.info(s"remote execution returned from $returnedActor")
+            case Failure(err)           => log.error(s"remote execution failed with $err")
+          }
+        case Failure(err) => log.error(s"akka messaging failed with $err")
+      }
+
     }
   }
 
@@ -84,18 +87,18 @@ class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeo
 case object Remote {
   type RemoteContinuation[A] = (Resource[UnitContinuation, Try[A]]) => Unit
 
-  val remoteStore: DynamicVariable[Remote] = new DynamicVariable[Remote](null)
-
-  implicit class RemoteActorSystem(val actorSystem: ActorSystem)
+  val actorSystemStore: DynamicVariable[ActorSystem] = new DynamicVariable[ActorSystem](null)
 
   object RemoteProxy extends Serializable {
     def readResolve: Any = {
-      val remote = remoteStore.value
+      val actorSystem = actorSystemStore.value
+      implicit val timeout: Timeout = FiniteDuration(10, SECONDS)
+      val remote = new Remote(actorSystem)
       val log = {
         implicit val logSource: LogSource[Remote] = new LogSource[Remote] {
           override def genString(t: Remote): String = toString
         }
-        Logging(remote.remoteActorSystem.actorSystem, remote)
+        Logging(remote.actorSystem, remote)
       }
       log.info(s"readResolve of $remote is invoked")
       remote
