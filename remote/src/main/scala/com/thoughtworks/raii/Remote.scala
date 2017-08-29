@@ -3,7 +3,7 @@ package com.thoughtworks.raii
 import java.io.{ObjectOutputStream, ByteArrayOutputStream, ObjectInputStream, ByteArrayInputStream}
 import scala.util.{Failure, Success, Try, DynamicVariable}
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
-import akka.event.Logging
+import akka.event.{Logging, LogSource}
 import akka.pattern.ask
 import akka.util.Timeout
 import scalaz.syntax.all._
@@ -52,6 +52,9 @@ class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeo
           new ObjectOutputStream(byteArrayOutputStream).writeObject(remoteContinuation)
           byteArrayOutputStream.toByteArray
         }
+        implicit val logSource = new LogSource[Remote] {
+          override def genString(t: Remote): String = toString
+        }
         val log = Logging(remoteActorSystem.actorSystem, this)
         (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
           case Success(Receipt(receipt)) =>
@@ -91,6 +94,9 @@ object Remote {
         UnitContinuation.delay {
           import actorSystem.dispatcher
           val Future(TryT(tryFinalizer)) = actorSystem.terminate.toThoughtworksFuture
+          implicit val logSource = new LogSource[Remote.this.type] {
+            override def genString(t: Remote.this.type): String = toString
+          }
           val log = Logging(actorSystem, this)
           tryFinalizer.map {
             case Success(_)   => log.info(s"actorSystem $actorSystem terminated")
