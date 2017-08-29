@@ -64,7 +64,7 @@ import scalaz.syntax.all._
   *            })
   *          }
   *          def allClients(acquire: Do[MyResource], numberOfClients: Int, operationsPerClient: Int): ParallelDo[Unit] = {
-  *            implicit def keepLastException = new Semigroup[Throwable] {
+  *            implicit def keepLastException = new Serializable with Semigroup[Throwable] {
   *              override def append(f1: Throwable, f2: => Throwable) = f2
   *            }
   *            Applicative[ParallelDo].replicateM_(numberOfClients, Parallel(client(acquire, operationsPerClient)))

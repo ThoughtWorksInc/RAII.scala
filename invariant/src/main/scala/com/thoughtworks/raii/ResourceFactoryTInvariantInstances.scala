@@ -11,7 +11,7 @@ import scala.language.higherKinds
 private[raii] trait ResourceFactoryTInvariantInstances { this: ResourceT.type =>
 
   /** @group Type classes */
-  implicit def resourceTMonadTrans: MonadTrans[ResourceT] = new MonadTrans[ResourceT] {
+  implicit def resourceTMonadTrans: MonadTrans[ResourceT] = new Serializable with MonadTrans[ResourceT] {
 
     override def liftM[F[_]: Monad, A](fa: F[A]): ResourceT[F, A] =
       garbageCollected(fa)

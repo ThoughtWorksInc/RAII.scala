@@ -11,7 +11,7 @@ private[raii] sealed abstract class CovariantResourceTInstances3 {
 
   /** @group Type classes */
   implicit def covariantResourceTApplicative[F[+ _]: Applicative]: Applicative[ResourceT[F, ?]] =
-    new CovariantResourceTApplicative[F] with Serializable {
+    new Serializable with CovariantResourceTApplicative[F]  {
       override private[raii] def typeClass = implicitly
     }
 }
@@ -19,7 +19,7 @@ private[raii] sealed abstract class CovariantResourceTInstances3 {
 private[raii] sealed abstract class CovariantResourceTInstances2 extends CovariantResourceTInstances3 {
 
   /** @group Type classes */
-  implicit def covariantResourceTMonad[F[+ _]: Monad]: Monad[ResourceT[F, ?]] = new CovariantResourceTMonad[F] with Serializable {
+  implicit def covariantResourceTMonad[F[+ _]: Monad]: Monad[ResourceT[F, ?]] = new Serializable with CovariantResourceTMonad[F]  {
     private[raii] override def typeClass = implicitly
   }
 }
@@ -29,7 +29,7 @@ private[raii] sealed abstract class CovariantResourceTInstances1 extends Covaria
   /** @group Type classes */
   implicit def covariantResourceTNondeterminism[F[+ _]](
       implicit F0: Nondeterminism[F]): Nondeterminism[ResourceT[F, ?]] =
-    new CovariantResourceTNondeterminism[F] with Serializable {
+    new Serializable with CovariantResourceTNondeterminism[F]  {
       private[raii] override def typeClass = implicitly
     }
 }
@@ -38,7 +38,7 @@ private[raii] sealed abstract class CovariantResourceTInstances0 extends Covaria
 
   /** @group Type classes */
   implicit def covariantResourceTMonadError[F[+ _], S](implicit F0: MonadError[F, S]): MonadError[ResourceT[F, ?], S] =
-    new CovariantResourceTMonadError[F, S] with Serializable {
+    new Serializable with CovariantResourceTMonadError[F, S]  {
       private[raii] override def typeClass = implicitly
     }
 }
@@ -77,7 +77,7 @@ private[raii] trait CovariantResourceTParallelApplicative[F[+ _]]
   override def map[A, B](pfa: ResourceT[F, A] @@ Parallel)(f: (A) => B): ResourceT[F, B] @@ Parallel = {
     val Parallel(ResourceT(fa)) = pfa
     val Parallel(fb) = typeClass.map(Parallel(fa)) { releasableA: Resource[F, A] =>
-      val releasableB: Resource[F, B] = new Resource[F, B] {
+      val releasableB: Resource[F, B] = new Serializable with Resource[F, B] {
         override val value: B = f(releasableA.value)
         override val release = releasableA.release
       }
@@ -112,7 +112,7 @@ private[raii] trait CovariantResourceTParallelApplicative[F[+ _]]
             val valueB = resourceF.value(resourceA.value)
             val releaseA = resourceA.release
             val releaseF = resourceF.release
-            new Resource[F, B] {
+            new Serializable with Resource[F, B] {
               override val value: B = valueB
 
               override val release: F[Unit] = {
@@ -131,7 +131,7 @@ private[raii] trait CovariantResourceTParallelApplicative[F[+ _]]
 
 private[raii] trait CovariantResourceTMonad[F[+ _]]
     extends CovariantResourceTApplicative[F]
-    with Monad[ResourceT[F, ?]] with Serializable {
+    with Monad[ResourceT[F, ?]]  {
   private[raii] implicit override def typeClass: Monad[F]
 
   override def bind[A, B](fa: ResourceT[F, A])(f: (A) => ResourceT[F, B]): ResourceT[F, B] = {
@@ -143,7 +143,7 @@ private[raii] trait CovariantResourceTMonad[F[+ _]]
         val b = releasableB.value
         val releaseB = releasableB.release
         val releaseA = releasableA.release
-        new Resource[F, B] {
+        new Serializable with Resource[F, B] {
           override def value: B = b
 
           override val release: F[Unit] = {
@@ -179,7 +179,7 @@ private[raii] trait CovariantResourceTMonadError[F[+ _], S]
         case \/-(releasableA) =>
           catchError(unwrap(f(releasableA.value))).flatMap[Resource[F, B]] {
             case \/-(releasableB) =>
-              val wrappedReleasableB: Resource[F, B] = new Resource[F, B] {
+              val wrappedReleasableB: Resource[F, B] = new Serializable with Resource[F, B] {
                 override val value: B = releasableB.value
 
                 override val release: F[Unit] = {
@@ -216,7 +216,7 @@ private[raii] trait CovariantResourceTNondeterminism[F[+ _]]
     opacityTypes.apply(
       typeClass.chooseAny(unwrap(head), tail.map(unwrap)).map {
         case (fa, residuals) =>
-          new Resource[F, (A, Seq[ResourceT[F, A]])] {
+          new Serializable with Resource[F, (A, Seq[ResourceT[F, A]])] {
             override val value: (A, Seq[ResourceT[F, A]]) =
               (fa.value, residuals.map { residual: F[Resource[F, A]] =>
                 opacityTypes.apply[F, A](residual)
@@ -279,7 +279,7 @@ object covariant extends CovariantResourceTInstances0 {
     *
     * @note For internal usage only.
     */
-  val opacityTypes: OpacityTypes = new OpacityTypes {
+  val opacityTypes: OpacityTypes = new Serializable with OpacityTypes {
     override type ResourceT[F[+ _], +A] = F[Resource[F, A]]
 
     override def apply[F[+ _], A](run: F[Resource[F, A]]): ResourceT[F, A] = run
@@ -302,7 +302,7 @@ object covariant extends CovariantResourceTInstances0 {
     *
     *          {{{
     *          import java.io.File
-    *          val resource: RAII[File] = ResourceT(Name(new Resource[Name, File] {
+    *          val resource: RAII[File] = ResourceT(Name(new Serializable with Resource[Name, File] {
     *            override val value: File = File.createTempFile("test", ".tmp");
     *            override val release: Name[Unit] = Name {
     *              val isDeleted = value.delete()
@@ -343,7 +343,7 @@ object covariant extends CovariantResourceTInstances0 {
   import opacityTypes._
 
   /** A container of a [[value]] and a function to [[release]] the `value`.
-    * @note This [[Resource]] will become a case class. Use [[Resource.apply]] instead of `new Resource[F, A] { ... }`.
+    * @note This [[Resource]] will become a case class. Use [[Resource.apply]] instead of `new Serializable with Resource[F, A] { ... }`.
     * @tparam A the type of [[value]]
     * @tparam F the monadic type of [[release]]
     */
@@ -370,7 +370,7 @@ object covariant extends CovariantResourceTInstances0 {
     def apply[F[+ _], A](value: A, release: F[Unit]): Resource[F, A] = {
       val value0 = value
       val release0 = release
-      new Resource[F, A] {
+      new Serializable with Resource[F, A] {
         def value: A = value0
 
         def release: F[Unit] = release0
@@ -441,7 +441,7 @@ object covariant extends CovariantResourceTInstances0 {
   implicit def covariantResourceTParallelApplicative[F[+ _]](
       implicit F0: Applicative[Lambda[A => F[A] @@ Parallel]]
   ): Applicative[Lambda[A => ResourceT[F, A] @@ Parallel]] = {
-    new CovariantResourceTParallelApplicative[F] with Serializable {
+    new Serializable with CovariantResourceTParallelApplicative[F]  {
       override private[raii] implicit def typeClass = F0
     }
   }
@@ -499,7 +499,7 @@ object covariant extends CovariantResourceTInstances0 {
         unwrap(resourceT).flatMap { releasableA =>
           val b = f(releasableA.value)
           releasableA.release.map { _ =>
-            new Resource[F, B] {
+            new Serializable with Resource[F, B] {
               override val value: B = b
 
               override val release: F[Unit] = {

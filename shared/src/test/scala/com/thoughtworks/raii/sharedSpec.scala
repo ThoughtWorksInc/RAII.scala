@@ -30,7 +30,7 @@ object sharedSpec {
   def managedT[F[+ _]: Applicative, Value <: AutoCloseable](autoCloseable: => Value): ResourceT[F, Value] = {
     ResourceT(
       Applicative[F].point {
-        new Resource[F, Value] {
+        new Serializable with Resource[F, Value] {
           override val value: Value = autoCloseable
 
           override def release(): F[Unit] = Applicative[F].point(value.close())
@@ -98,7 +98,7 @@ object sharedSpec {
     override def toString: String = throwableSet.toString()
   }
 
-  implicit def throwableSemigroup = new Semigroup[Throwable] {
+  implicit def throwableSemigroup = new Serializable with Semigroup[Throwable] {
     override def append(f1: Throwable, f2: => Throwable): Throwable =
       f1 match {
         case MultipleException(exceptionSet1) =>
@@ -148,7 +148,7 @@ object sharedSpec {
     def apply(): UnitContinuation[Resource[UnitContinuation, String]] = {
       appendThisToAllOpenedResources()
       Continuation.delay(
-        new Resource[UnitContinuation, String] {
+        new Serializable with Resource[UnitContinuation, String] {
           override def value: String = id
 
           override def release: UnitContinuation[Unit] = Continuation.delay {
@@ -173,7 +173,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
   "when working with scalaz's UnitContinuation, it must asynchronously acquire and release" in {
     val events = mutable.Buffer.empty[String]
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-    val mr0 = managedT[UnitContinuation, FakeResource](new FakeResource(allOpenedResources, "r0"))
+    val mr0 = managedT[UnitContinuation, FakeResource](new Serializable with FakeResource(allOpenedResources, "r0"))
     allOpenedResources.keys shouldNot contain("r0")
     val asynchronousResource: UnitContinuation[Assertion] =
       using[UnitContinuation, FakeResource, Assertion](mr0, r0 => {
@@ -198,7 +198,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     "must asynchronously acquire and release" in {
       val events = mutable.Buffer.empty[String]
       val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
-      val mr0 = managedT[Future, FakeResource](new FakeResource(allOpenedResources, "r0"))
+      val mr0 = managedT[Future, FakeResource](new Serializable with FakeResource(allOpenedResources, "r0"))
       allOpenedResources.keys shouldNot contain("r0")
 
       val asynchronousResource: Future[Assertion] = using[Future, FakeResource, Assertion](mr0, r0 => {
@@ -228,7 +228,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allOpenedResources = mutable.HashMap.empty[String, FakeResource]
 
     val sharedResource: ResourceT[UnitContinuation, FakeResource] =
-      managedT[UnitContinuation, FakeResource](new FakeResource(allOpenedResources, "0")).shared
+      managedT[UnitContinuation, FakeResource](new Serializable with FakeResource(allOpenedResources, "0")).shared
 
     allOpenedResources.keys shouldNot contain("0")
 
@@ -258,7 +258,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
     val sharedResource: ResourceT[UnitContinuation, String] =
-      ResourceT(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
+      ResourceT(new Serializable with FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
     val pf: RAIIFuture[String] = TryT[ResourceT[UnitContinuation, `+?`], String](
       covariantResourceTMonad[UnitContinuation](continuationMonad).map(sharedResource) { Success(_) })
@@ -296,7 +296,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
     val sharedResource: ResourceT[UnitContinuation, String] =
-      ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
+      ResourceT.apply(new Serializable with FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
       covariantResourceTMonad[UnitContinuation](continuationMonad).map(sharedResource) { Success(_) }
@@ -342,7 +342,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
     val sharedResource: ResourceT[UnitContinuation, String] =
-      ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
+      ResourceT.apply(new Serializable with FutureDelayFakeResource(allOpenedResources, "0").apply()).shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
       covariantResourceTMonad[UnitContinuation](continuationMonad).map(sharedResource) { Try(_) }
@@ -385,9 +385,9 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allOpenedResources = mutable.HashMap.empty[String, FutureDelayFakeResource]
 
     val resource0: ResourceT[UnitContinuation, String] =
-      ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "0").apply())
+      ResourceT.apply(new Serializable with FutureDelayFakeResource(allOpenedResources, "0").apply())
     val resource1: ResourceT[UnitContinuation, String] =
-      ResourceT.apply(new FutureDelayFakeResource(allOpenedResources, "1").apply()).shared
+      ResourceT.apply(new Serializable with FutureDelayFakeResource(allOpenedResources, "1").apply()).shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
       covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource0) { Try(_) }
@@ -441,9 +441,9 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allCallBack = mutable.HashMap.empty[String, Resource[UnitContinuation, String] => Unit]
 
     val resource0: ResourceT[UnitContinuation, String] =
-      ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "0").apply())
+      ResourceT.apply(new Serializable with FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "0").apply())
     val resource1: ResourceT[UnitContinuation, String] =
-      ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "1").apply()).shared
+      ResourceT.apply(new Serializable with FutureAsyncFakeResource(allOpenedResources, allCallBack, () => "1").apply()).shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
       covariantResourceTMonad[UnitContinuation](continuationMonad).map(resource0) { Try(_) }
@@ -490,14 +490,14 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     }
 
     for ((id, continue) <- allCallBack) {
-      val releasable = new Resource[UnitContinuation, String] {
+      val releasable = new Serializable with Resource[UnitContinuation, String] {
         override def value: String = id
         override def release: UnitContinuation[Unit] = Continuation.delay {
           val removed = allOpenedResources.remove(id)
 
           removed match {
             case Some(_) =>
-            case None    => throw new CanNotCloseResourceTwice
+            case None    => throw new Serializable with CanNotCloseResourceTwice
           }
 
         }
@@ -515,10 +515,10 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allAcquireCallBack = mutable.HashMap.empty[String, Resource[UnitContinuation, String] => Unit]
 
     val resource0: ResourceT[UnitContinuation, String] =
-      ResourceT.apply(new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "0").apply())
+      ResourceT.apply(new Serializable with FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "0").apply())
     val resource1: ResourceT[UnitContinuation, String] =
       ResourceT
-        .apply(new FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "1").apply())
+        .apply(new Serializable with FutureAsyncFakeResource(allOpenedResources, allAcquireCallBack, () => "1").apply())
         .shared
 
     val pf1: ResourceT[UnitContinuation, Try[String]] =
@@ -567,7 +567,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
     val allReleaseCallBack = mutable.HashMap.empty[String, Unit => Unit]
 
     for ((id, continue) <- allAcquireCallBack) {
-      val releasable = new Resource[UnitContinuation, String] {
+      val releasable = new Serializable with Resource[UnitContinuation, String] {
         override def value: String = id
 
         override def release: UnitContinuation[Unit] = {
@@ -587,7 +587,7 @@ class sharedSpec extends AsyncFreeSpec with Matchers with Inside with Continuati
 
           removed match {
             case Some(_) =>
-            case None    => throw new CanNotCloseResourceTwice
+            case None    => throw new Serializable with CanNotCloseResourceTwice
           }
         }
       }

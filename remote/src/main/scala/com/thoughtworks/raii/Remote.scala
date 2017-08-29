@@ -47,7 +47,7 @@ class Remote(val actorSystem: ActorSystem)(implicit val timeout: Timeout) extend
   import actorSystem.dispatcher
 
   val log = {
-    implicit val logSource: LogSource[Remote] = new LogSource[Remote] {
+    implicit val logSource: LogSource[Remote] = new Serializable with LogSource[Remote] {
       override def genString(t: Remote): String = toString
     }
     Logging(actorSystem, this)
@@ -95,7 +95,7 @@ case object Remote {
       implicit val timeout: Timeout = FiniteDuration(10, SECONDS)
       val remote = new Remote(actorSystem)
       val log = {
-        implicit val logSource: LogSource[Remote] = new LogSource[Remote] {
+        implicit val logSource: LogSource[Remote] = new Serializable with LogSource[Remote] {
           override def genString(t: Remote): String = toString
         }
         Logging(remote.actorSystem, remote)
@@ -114,7 +114,7 @@ case object Remote {
           import actorSystem.dispatcher
           val Future(TryT(tryFinalizer)) = actorSystem.terminate.toThoughtworksFuture
           val log = {
-            implicit val logSource: LogSource[Remote.this.type] = new LogSource[Remote.this.type] {
+            implicit val logSource: LogSource[Remote.this.type] = new Serializable with LogSource[Remote.this.type] {
               override def genString(t: Remote.this.type): String = toString
             }
             Logging(actorSystem, this)

@@ -59,7 +59,7 @@ object asynchronous {
     *
     * @note For internal usage only.
     */
-  val opacityTypes: OpacityTypes = new OpacityTypes {
+  val opacityTypes: OpacityTypes = new Serializable with OpacityTypes {
     override type Do[+A] = TryT[RAIIContinuation, A]
 
     override private[asynchronous] def fromTryT[A](
@@ -105,7 +105,7 @@ object asynchronous {
     *          import com.thoughtworks.raii.asynchronous.{Do, ParallelDo}
     *          import java.net._
     *          import java.io._
-    *          val originalDoInput: Do[InputStream] = Do.autoCloseable(new URL("http://thoughtworks.com/").openStream())
+    *          val originalDoInput: Do[InputStream] = Do.autoCloseable(new Serializable with URL("http://thoughtworks.com/").openStream())
     *          }}}
     *
     *          when converting it to `ParallelDo` and converting it back,
@@ -197,14 +197,14 @@ object asynchronous {
       fromContinuation(
         continuation.map {
           case failure @ Failure(e) =>
-            new Resource[UnitContinuation, Try[A]] {
+            new Serializable with Resource[UnitContinuation, Try[A]] {
               override val value: Try[A] = Failure(e)
               override def release: UnitContinuation[Unit] = {
                 UnitContinuation.now(())
               }
             }
           case success @ Success(releasable) =>
-            new Resource[UnitContinuation, Try[A]] {
+            new Serializable with Resource[UnitContinuation, Try[A]] {
               override val value = Success(releasable)
               override def release: UnitContinuation[Unit] = releasable.monadicClose
             }
@@ -228,14 +228,14 @@ object asynchronous {
       fromContinuation(
         continuation.map {
           case failure @ Failure(e) =>
-            new Resource[UnitContinuation, Try[A]] {
+            new Serializable with Resource[UnitContinuation, Try[A]] {
               override val value: Try[A] = failure
               override val release: UnitContinuation[Unit] = {
                 UnitContinuation.now(())
               }
             }
           case success @ Success(closeable) =>
-            new Resource[UnitContinuation, Try[A]] {
+            new Serializable with Resource[UnitContinuation, Try[A]] {
               override val value: Try[A] = success
               override val release: UnitContinuation[Unit] = {
                 Continuation.delay(closeable.close())
