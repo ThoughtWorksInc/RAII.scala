@@ -3,6 +3,7 @@ package com.thoughtworks.raii
 import java.io.{ObjectOutputStream, ByteArrayOutputStream, ObjectInputStream, ByteArrayInputStream}
 import scala.util.{Failure, Success, Try, DynamicVariable}
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.event.Logging
 import akka.pattern.ask
 import akka.util.Timeout
 import scalaz.syntax.all._
@@ -51,13 +52,14 @@ class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeo
           new ObjectOutputStream(byteArrayOutputStream).writeObject(remoteContinuation)
           byteArrayOutputStream.toByteArray
         }
+        val log = Logging(remoteActorSystem.actorSystem, this)
         (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
           case Success(Receipt(receipt)) =>
             receipt match {
-              case Success(_)   =>
-              case Failure(err) =>
+              case Success(returnedActor) => log.info(s"remote execution returned from $returnedActor")
+              case Failure(err)           => log.error(s"remote execution failed with $err")
             }
-          case Failure(err) =>
+          case Failure(err) => log.error(s"akka messaging failed with $err")
         }
       }
     }
@@ -89,9 +91,10 @@ object Remote {
         UnitContinuation.delay {
           import actorSystem.dispatcher
           val Future(TryT(tryFinalizer)) = actorSystem.terminate.toThoughtworksFuture
+          val log = Logging(actorSystem, this)
           tryFinalizer.map {
-            case Success(_)   => // todo
-            case Failure(err) =>
+            case Success(_)   => log.info(s"actorSystem $actorSystem terminated")
+            case Failure(err) => log.error(s"termination of actorSystem $actorSystem failed with $err")
           }
         }.join
       )
