@@ -1,3 +1,6 @@
 [submodule "future.scala"]
 	path = future.scala
 	url = https://github.com/ThoughtWorksInc/future.scala.git
+[submodule "tryt.scala"]
+	path = tryt.scala
+	url = https://github.com/ThoughtWorksInc/tryt.scala.git
