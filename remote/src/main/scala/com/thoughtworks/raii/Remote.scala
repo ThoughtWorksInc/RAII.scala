@@ -1,31 +1,77 @@
 package com.thoughtworks.raii
 
-import akka.actor.{Actor, ActorRef, ActorSystem, Props, Terminated}
-import util.Try
+import java.io.{ObjectOutputStream, ByteArrayOutputStream, ObjectInputStream, ByteArrayInputStream}
+import scala.util.{Failure, Success, Try}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.pattern.ask
+import akka.util.Timeout
 import scalaz.syntax.all._
+import com.thoughtworks.tryt._
 import com.thoughtworks.tryt.covariant._
-import com.thoughtworks.future._
 import com.thoughtworks.continuation._
+import com.thoughtworks.future._
 import com.thoughtworks.raii.asynchronous._
 import com.thoughtworks.raii.covariant._
 
-object Remote {
-  object ActorSystem {
-    def apply(actorSystem: ActorSystem): Do[ActorSystem] = {
-      val terminateFuture: Future[Terminated] = {
-        import actorSystem.dispatcher
-        actorSystem.terminate.toThoughtworksFuture
+case class Dispatch(remoteContinuationBuffer: Array[Byte])
+case class Receipt(receipt: Try[Unit])
+
+class RemoteActor extends Actor {
+  import Remote.RemoteContinuation
+
+  override def receive: Receive = {
+    case Dispatch(remoteContinuationBuffer) =>
+      new ObjectInputStream(new ByteArrayInputStream(remoteContinuationBuffer)).readObject().asInstanceOf[RemoteContinuation[ActorRef]]
+
+  }
+}
+
+class Remote(val remoteActorSystem: Remote.RemoteActorSystem)(implicit val timeout: Timeout) {
+  import Remote._
+  import remoteActorSystem.actorSystem
+  import actorSystem.dispatcher
+
+  def jump: Do[ActorRef] = Do.async {
+    (remoteContinuation: RemoteContinuation[ActorRef]) => {
+      val newActor = actorSystem.actorOf(Props(new RemoteActor))
+      val remoteContinuationBuffer = sys.error("todo") // todo
+      (newActor ? Dispatch(remoteContinuationBuffer)).onComplete {
+        case Success(Receipt(receipt)) => receipt match {
+          case Success(_) =>
+          case Failure(err) =>
+        }
+        case Failure(err) =>
       }
-      val Future(TryT(terminateCont)) = terminateFuture
-      val finalizerCont: UnitContinuation[Unit] = terminateCont.void
-      val resource: Resource[UnitContinuation, Try[ActorSystem]] = Resource(Try(actorSystem), finalizerCont)
-      val resourceCont: UnitContinuation[Resource[UnitContinuation, Try[ActorSystem]]] = UnitContinuation.now(resource)
-      Do(TryT(ResourceT(resourceCont)))
+    }
+  }
+}
+
+object Remote {
+  type RemoteContinuation[A] = (Resource[UnitContinuation, Try[A]]) => Unit
+
+  implicit class RemoteActorSystem(val actorSystem: ActorSystem) extends Serializable {
+    def writeReplace: Any = {
+      // todo
     }
   }
 
-  object Implicits {
-    implicit val globalActorSystem: Do[ActorSystem] = ActorSystem(akka.actor.ActorSystem("globalActorSystem"))
+  class RemoteActorSystemProxy extends Serializable {
+    def readResolve: Any = {
+      // todo
+    }
   }
 
+  def apply(makeActorSystem: => ActorSystem)(implicit timeout: Timeout): Do[Remote] = {
+    Do.resource {
+      val actorSystem = makeActorSystem
+      Resource(new Remote(actorSystem), UnitContinuation.delay {
+        import actorSystem.dispatcher
+        val Future(TryT(tryFinalizer)) = actorSystem.terminate.toThoughtworksFuture
+        tryFinalizer.map {
+          case Success(_) => // todo
+          case Failure(err) =>
+        }
+      }.join)
+    }
+  }
 }
