@@ -11,7 +11,7 @@ private[raii] sealed abstract class CovariantResourceTInstances3 {
 
   /** @group Type classes */
   implicit def covariantResourceTApplicative[F[+ _]: Applicative]: Applicative[ResourceT[F, ?]] =
-    new CovariantResourceTApplicative[F] {
+    new CovariantResourceTApplicative[F] with Serializable {
       override private[raii] def typeClass = implicitly
     }
 }
@@ -19,7 +19,7 @@ private[raii] sealed abstract class CovariantResourceTInstances3 {
 private[raii] sealed abstract class CovariantResourceTInstances2 extends CovariantResourceTInstances3 {
 
   /** @group Type classes */
-  implicit def covariantResourceTMonad[F[+ _]: Monad]: Monad[ResourceT[F, ?]] = new CovariantResourceTMonad[F] {
+  implicit def covariantResourceTMonad[F[+ _]: Monad]: Monad[ResourceT[F, ?]] = new CovariantResourceTMonad[F] with Serializable {
     private[raii] override def typeClass = implicitly
   }
 }
@@ -29,7 +29,7 @@ private[raii] sealed abstract class CovariantResourceTInstances1 extends Covaria
   /** @group Type classes */
   implicit def covariantResourceTNondeterminism[F[+ _]](
       implicit F0: Nondeterminism[F]): Nondeterminism[ResourceT[F, ?]] =
-    new CovariantResourceTNondeterminism[F] {
+    new CovariantResourceTNondeterminism[F] with Serializable {
       private[raii] override def typeClass = implicitly
     }
 }
@@ -38,7 +38,7 @@ private[raii] sealed abstract class CovariantResourceTInstances0 extends Covaria
 
   /** @group Type classes */
   implicit def covariantResourceTMonadError[F[+ _], S](implicit F0: MonadError[F, S]): MonadError[ResourceT[F, ?], S] =
-    new CovariantResourceTMonadError[F, S] {
+    new CovariantResourceTMonadError[F, S] with Serializable {
       private[raii] override def typeClass = implicitly
     }
 }
@@ -131,7 +131,7 @@ private[raii] trait CovariantResourceTParallelApplicative[F[+ _]]
 
 private[raii] trait CovariantResourceTMonad[F[+ _]]
     extends CovariantResourceTApplicative[F]
-    with Monad[ResourceT[F, ?]] {
+    with Monad[ResourceT[F, ?]] with Serializable {
   private[raii] implicit override def typeClass: Monad[F]
 
   override def bind[A, B](fa: ResourceT[F, A])(f: (A) => ResourceT[F, B]): ResourceT[F, B] = {
@@ -441,7 +441,7 @@ object covariant extends CovariantResourceTInstances0 {
   implicit def covariantResourceTParallelApplicative[F[+ _]](
       implicit F0: Applicative[Lambda[A => F[A] @@ Parallel]]
   ): Applicative[Lambda[A => ResourceT[F, A] @@ Parallel]] = {
-    new CovariantResourceTParallelApplicative[F] {
+    new CovariantResourceTParallelApplicative[F] with Serializable {
       override private[raii] implicit def typeClass = F0
     }
   }
