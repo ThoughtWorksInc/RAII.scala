@@ -1,6 +1,6 @@
 package com.thoughtworks.raii
 
-import java.io.StringWriter
+import java.io._
 
 import com.thoughtworks.future._
 import com.thoughtworks.raii.asynchronous._
@@ -70,6 +70,29 @@ final class asynchronousSpec extends AsyncFreeSpec with Matchers with ThoughtWor
     loop(0, 0).run.map { i =>
       i should be((1 until 30000).sum)
     }
+  }
+
+  private def serializationIdentity[A](a: A) = {
+    val byteArrayOutputStream = new ByteArrayOutputStream
+    val objectOutputStream = new ObjectOutputStream(byteArrayOutputStream)
+    try {
+      objectOutputStream.writeObject(a)
+    } finally {
+      objectOutputStream.close()
+    }
+    val objectInputStream = new ObjectInputStream(new ByteArrayInputStream(byteArrayOutputStream.toByteArray))
+    val result = objectInputStream.readObject()
+    result should be(a)
+  }
+
+  "Do should be serializable" in {
+    val i = 1
+    val j = 2
+    serializationIdentity(Do.delay(i))
+
+    serializationIdentity(Do.delay(i).map { i =>
+      i + j
+    })
   }
 
 }

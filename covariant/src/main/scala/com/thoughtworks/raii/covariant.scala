@@ -74,6 +74,8 @@ private[raii] trait CovariantResourceTParallelApplicative[F[+ _]]
     extends Applicative[Lambda[A => ResourceT[F, A] @@ Parallel]] {
   private[raii] implicit def typeClass: Applicative[Lambda[A => F[A] @@ Parallel]]
 
+  override def flip = this
+
   override def map[A, B](pfa: ResourceT[F, A] @@ Parallel)(f: (A) => B): ResourceT[F, B] @@ Parallel = {
     val Parallel(ResourceT(fa)) = pfa
     val Parallel(fb) = typeClass.map(Parallel(fa)) { releasableA: Resource[F, A] =>

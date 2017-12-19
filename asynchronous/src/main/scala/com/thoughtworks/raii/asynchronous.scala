@@ -105,7 +105,7 @@ object asynchronous {
     *          import com.thoughtworks.raii.asynchronous.{Do, ParallelDo}
     *          import java.net._
     *          import java.io._
-    *          val originalDoInput: Do[InputStream] = Do.autoCloseable(new Serializable with URL("http://thoughtworks.com/").openStream())
+    *          val originalDoInput: Do[InputStream] = Do.autoCloseable(new URL("http://thoughtworks.com/").openStream())
     *          }}}
     *
     *          when converting it to `ParallelDo` and converting it back,

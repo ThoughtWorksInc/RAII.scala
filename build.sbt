@@ -67,9 +67,7 @@ lazy val asynchronous = crossProject.crossType(CrossType.Pure).dependsOn(shared,
 
 lazy val asynchronousJVM = asynchronous.jvm
   .dependsOn(ProjectRef(file("future.scala"), "futureJVM"), ProjectRef(file("future.scala"), "continuationJVM"))
-  .addSbtFiles(file("../build.sbt.shared")) dependsOn (ProjectRef(file("future.scala"), "futureJVM"), ProjectRef(
-  file("future.scala"),
-  "continuationJVM"))
+  .addSbtFiles(file("../build.sbt.shared"))
 
 lazy val asynchronousJS = asynchronous.js
   .dependsOn(ProjectRef(file("future.scala"), "futureJS"), ProjectRef(file("future.scala"), "continuationJS"))
