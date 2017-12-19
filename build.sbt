@@ -1,6 +1,6 @@
 import scala.util.matching.Regex.{Groups, Match}
 
-crossScalaVersions := Seq("2.11.11", "2.12.3")
+crossScalaVersions := Seq("2.11.12", "2.12.4")
 
 lazy val covariant = crossProject.crossType(CrossType.Pure)
 
