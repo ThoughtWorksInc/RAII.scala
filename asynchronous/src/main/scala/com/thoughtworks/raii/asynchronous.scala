@@ -29,6 +29,10 @@ import scalaz.std.anyVal._
   */
 object asynchronous {
 
+  trait DefaultCloseable extends MonadicCloseable[UnitContinuation] {
+    def monadicClose = UnitContinuation.now(())
+  }
+
   private def fromContinuation[A](future: UnitContinuation[Resource[UnitContinuation, Try[A]]]): Do[A] = {
     opacityTypes.fromTryT(TryT[RAIIContinuation, A](ResourceT(future)))
   }
@@ -62,11 +66,9 @@ object asynchronous {
   val opacityTypes: OpacityTypes = new OpacityTypes {
     override type Do[+A] = TryT[RAIIContinuation, A]
 
-    override private[asynchronous] def fromTryT[A](
-        run: TryT[RAIIContinuation, A]): TryT[RAIIContinuation, A] = run
+    override private[asynchronous] def fromTryT[A](run: TryT[RAIIContinuation, A]): TryT[RAIIContinuation, A] = run
 
-    override private[asynchronous] def toTryT[A](
-        doa: TryT[RAIIContinuation, A]): TryT[RAIIContinuation, A] = doa
+    override private[asynchronous] def toTryT[A](doa: TryT[RAIIContinuation, A]): TryT[RAIIContinuation, A] = doa
 
     override private[asynchronous] def asynchronousDoMonadErrorInstances
       : MonadError[TryT[RAIIContinuation, ?], Throwable] = {
@@ -247,7 +249,7 @@ object asynchronous {
 
     @deprecated(message = "Use [[autoCloseable]] instead.", since = "3.0.0")
     def scoped[A <: AutoCloseable](future: UnitContinuation[A],
-                                       dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
+                                   dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
       autoCloseable(future)
     }
 
@@ -258,8 +260,8 @@ object asynchronous {
       * $seeautocloseable
       */
     def monadicCloseable[A <: MonadicCloseable[UnitContinuation]](future: UnitContinuation[A],
-                                                                      dummyImplicit: DummyImplicit =
-                                                                        DummyImplicit.dummyImplicit): Do[A] = {
+                                                                  dummyImplicit: DummyImplicit =
+                                                                    DummyImplicit.dummyImplicit): Do[A] = {
       monadicCloseable(Future(TryT(future.map(Success(_)))))
     }
 
@@ -270,7 +272,7 @@ object asynchronous {
       * $seereleasable
       */
     def autoCloseable[A <: AutoCloseable](continuation: UnitContinuation[A],
-                                              dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
+                                          dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
       autoCloseable(Future(TryT(continuation.map(Success(_)))))
     }
 
@@ -333,7 +335,7 @@ object asynchronous {
       * $seedelay
       */
     def garbageCollected[A](continuation: UnitContinuation[A],
-                                dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
+                            dummyImplicit: DummyImplicit = DummyImplicit.dummyImplicit): Do[A] = {
       garbageCollected(Future(TryT(continuation.map(Success(_)))))
     }
 
@@ -389,8 +391,7 @@ object asynchronous {
       Do(TryT(ResourceT(UnitContinuation.async(start))))
     }
 
-    def safeAsync[A](
-        start: (Resource[UnitContinuation, Try[A]] => Trampoline[Unit]) => Trampoline[Unit]): Do[A] = {
+    def safeAsync[A](start: (Resource[UnitContinuation, Try[A]] => Trampoline[Unit]) => Trampoline[Unit]): Do[A] = {
       Do(TryT(ResourceT(UnitContinuation.safeAsync(start))))
     }
 
