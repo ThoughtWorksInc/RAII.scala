@@ -459,10 +459,14 @@ object asynchronous {
     }
 
     /** Returns a `Do` of `B` based on a `Do` of `A` and a function that creates a `Do` of `B`,
-      * for those `B` do not reference to `A` or `A` is a garbage collected object.
+      * when `B` will not reference to `A`,
+      * or `A` is a garbage collected object without additional release action.
       *
-      * @note `intransitiveFlatMap` is similar to `flatMap` in [[asynchronousDoMonadErrorInstances]],
-      *       except `intransitiveFlatMap` will release `A` right after `B` is created.
+      * @note `intransitiveFlatMap` is similar to `flatMap` in [[asynchronousDoMonadErrorInstances]].
+      *
+      *       Whereas `intransitiveFlatMap` will release `A` right after `B` is __created__,
+      *       if there is a release action associated with `A`,
+      *       `flatMap` will release `A` right after `B` is __released__.
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
       */
@@ -479,10 +483,14 @@ object asynchronous {
     }
 
     /** Returns a `Do` of `B` based on a `Do` of `A` and a function that creates `B`,
-      * for those `B` do not reference to `A` or `A` is a garbage collected object.
+      * when `B` will not reference to `A`,
+      * or `A` is a garbage collected object without additional release action.
       *
-      * @note `intransitiveMap` is similar to `map` in [[asynchronousDoMonadErrorInstances]],
-      *       except `intransitiveMap` will release `A` right after `B` is created.
+      * @note `intransitiveMap` is similar to `map` in [[asynchronousDoMonadErrorInstances]].
+      *
+      *       Whereas `intransitiveMap` will release `A` right after `B` is __created__
+      *       if there is a release action associated with `A`,
+      *       `map` will release `A` right after `B` is __released__.
       *
       *       Don't use this method if you need to retain `A` until `B` is released.
       */
