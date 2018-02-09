@@ -92,7 +92,8 @@ object asynchronous {
     *  - [[ParallelDo parallel computing]]
     *
     * @note This `Do` type is an [[https://www.reddit.com/r/scala/comments/5qbdgq/value_types_without_anyval/dcxze9q/ opacity alias]] to `UnitContinuation[Resource[UnitContinuation, Try[A]]]`.
-    * @see [[Do$ Do]] companion object for helper functions for this `Do` type.
+    * @see [[Do$ Do]] companion object for static helper functions for this `Do` type.
+    @ @see [[AsynchronousDoOps]] for implicit methods for this `Do` type.
     * @see [[asynchronousDoMonadErrorInstances]] for the [[scalaz.MonadError MonadError]] the type class for this `Do` type.
     * @template
     */
