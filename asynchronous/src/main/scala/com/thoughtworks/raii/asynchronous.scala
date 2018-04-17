@@ -450,6 +450,20 @@ object asynchronous {
       continuation.safeOnComplete(continue)
     }
 
+    def acquire: Future[Resource[UnitContinuation, A]] = {
+      val Do(TryT(ResourceT(continuation))) = asynchronousDo
+      Future(TryT(continuation.flatMap { resource =>
+        resource.value match {
+          case Success(a) =>
+            UnitContinuation.now(Success(Resource(a, resource.release)))
+          case Failure(e) =>
+            resource.release.map { _: Unit =>
+              Failure(e)
+            }
+        }
+      }))
+    }
+
     /**
       * Returns a `Future` of `A`, which will open `A` and release all resources during opening `A`.
       *
