@@ -492,7 +492,12 @@ object asynchronous {
         case Failure(e) =>
           ResourceT(Continuation.now(Resource.now(Failure(e))))
         case Success(value) =>
-          ResourceT(toContinuation(f(value)))
+          try {
+            ResourceT(toContinuation(f(value)))
+          } catch {
+            case NonFatal(e) =>
+              ResourceT(Continuation.now(Resource.now(Failure(e))))
+          }
       }
       val ResourceT(future) = resourceB
       fromContinuation(future)
