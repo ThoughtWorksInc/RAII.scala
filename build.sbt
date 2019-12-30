@@ -76,7 +76,7 @@ lazy val unidoc = project
       inDependencies(AsynchronousSemaphoreJVM, transitive = true, includeRoot = true) ||
       inProjects(asynchronouspoolJVM, invariantJVM)
     },
-    addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.10"),
+    addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.10.0"),
     scalacOptions += "-Xexperimental",
     scalacOptions += "-Ypartial-unification"
   )
