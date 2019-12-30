@@ -2,7 +2,7 @@ libraryDependencies += "org.scalatest" %%% "scalatest" % "3.0.3" % Test
 
 libraryDependencies += "com.thoughtworks.tryt" %%% "covariant" % "2.0.3" % Test
 
-libraryDependencies += "com.thoughtworks.continuation" %%% "continuation" % "2.0.0-M2"
+libraryDependencies += "com.thoughtworks.continuation" %%% "continuation" % "2.0.0"
 
 libraryDependencies += "com.thoughtworks.future" %%% "future" % "2.0.0-M2" % Test
 
